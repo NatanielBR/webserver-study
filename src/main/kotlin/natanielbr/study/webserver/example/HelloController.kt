@@ -6,8 +6,8 @@ import natanielbr.study.webserver.core.WebController
 @Path("/")
 class HelloController: WebController() {
 
-    fun index(): String {
-        return "ola"
+    fun index(name: String): String {
+        return "ola $name!"
     }
 
     fun noFoundTest(): String {

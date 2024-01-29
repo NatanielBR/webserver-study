@@ -1,9 +1,12 @@
 package natanielbr.study.webserver.core
 
+import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
 import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
+import kotlin.math.log
 import kotlin.reflect.KCallable
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMembers
+import kotlin.reflect.jvm.jvmErasure
 
 open interface WebParameter {
     fun isText(): Boolean
@@ -113,10 +116,26 @@ open class WebController: HttpErrorHandlers {
         }
 
         kotlin.runCatching {
-            this.webResponse.body = serializeResponse(method.call(this))
+            val methodParams = mutableListOf<Any>()
+            val httpParameters = parameters.split("&").map { it.split("=") }.associate { it[0] to it[1] }
+
+            method.parameters.forEach {
+                if (it.type.jvmErasure.isInstance(this)) {
+                    // first parameter is instance
+                    methodParams.add(this)
+                } else {
+                    // any parameter
+                    val paramValue = httpParameters[it.name] ?: throw Exception("Parameter ${it.name} not found")
+                    val serialized = serializeParameter(paramValue, it.type.jvmErasure.java)
+
+                    methodParams.add(serialized)
+                }
+            }
+
+            this.webResponse.body = serializeResponse(method.call(*methodParams.toTypedArray()))
         }.onFailure {
             this.webResponse.status = 500
-            this.webResponse.body = serializeResponse(error500())
+            this.webResponse.body = serializeResponse(error500(it))
         }
 
         return this.webResponse
@@ -126,7 +145,8 @@ open class WebController: HttpErrorHandlers {
         return "Error 404 - Not Found"
     }
 
-    override fun error500(): Any {
+    override fun error500(exception: Throwable): Any {
+        exception.printStackTrace()
         return "Error 500 - Internal Server Error"
     }
 
