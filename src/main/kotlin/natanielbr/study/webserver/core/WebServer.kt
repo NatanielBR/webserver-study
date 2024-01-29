@@ -1,12 +1,21 @@
 package natanielbr.study.webserver.core
 
 import natanielbr.study.webserver.example.HelloController
+import org.reflections.Reflections
 import java.net.ServerSocket
 
 class WebServer {
-    val controllerMap = mutableMapOf<String, WebController>(
-        "/" to HelloController()
-    )
+    val controllerMap = mutableMapOf<String, WebController>()
+
+    init {
+        // get all class using Annotation Path
+        val reflections = Reflections("")
+        reflections.getTypesAnnotatedWith(Path::class.java).forEach {
+            val path = it.getAnnotation(Path::class.java).path
+            val controller = it.getDeclaredConstructor().newInstance() as WebController
+            controllerMap[path] = controller
+        }
+    }
 
     fun start() {
         ServerSocket(8080).use { server ->
@@ -67,3 +76,5 @@ class WebServer {
         }
     }
 }
+
+annotation class Path(val path: String)
