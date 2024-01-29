@@ -9,4 +9,9 @@ class HelloController: WebController() {
     fun index(): String {
         return "ola"
     }
+
+    fun noFoundTest(): String {
+        response.status = 404
+        return "not found"
+    }
 }

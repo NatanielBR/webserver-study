@@ -46,32 +46,19 @@ class WebServer {
                     response.write("HTTP/1.1 404 Not Found\r\n")
                     response.write("Content-Type: text/html\r\n")
                 } else {
-                    response.write("HTTP/1.1 200 OK\r\n")
-                    response.write("Content-Type: text/html\r\n")
-                }
-                val result = controller?.execute(controllerMethod, "")
+                    val result = controller.execute(WebRequest(controllerMethod, method, path), "")
 
-                response.write("\r\n")
-                response.write(serializeResponse(result))
-                response.write("\r\n")
+                    if (result == null) {
+                        response.write("HTTP/1.1 404 Not Found\r\n")
+                        response.write("Content-Type: text/html\r\n")
+                    } else {
+                        response.write(result.serialize())
+                    }
+
+                }
+
                 response.flush()
                 socket.close()
-            }
-        }
-    }
-
-    private fun serializeResponse(response: Any?): String {
-        if (response == null) {
-            return ""
-        }
-
-        return when (response) {
-            is String -> {
-                response
-            }
-
-            else -> {
-                response.toString()
             }
         }
     }

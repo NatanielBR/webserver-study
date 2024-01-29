@@ -19,13 +19,20 @@ open interface WebParameter {
 //    fun isArray(): Boolean
 }
 
-open interface WebGetParameter: WebParameter {
+open interface WebGetParameter : WebParameter {
     fun isArray(): Boolean
     fun asAsArray(): List<*>
 }
 
 open class WebController {
     private val methods = mutableMapOf<String, KCallable<*>>()
+    private lateinit var webRequest: WebRequest
+    private lateinit var webResponse: WebResponse
+
+    protected val request: WebRequest
+        get() = webRequest
+    protected val response: WebResponse
+        get() = webResponse
 
     private fun init() {
         val methods = this::class.declaredMembers
@@ -84,51 +91,65 @@ open class WebController {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    fun execute(path: String, parameters: String): Any? {
+    fun execute(webRequest: WebRequest, parameters: String): WebResponse? {
         if (methods.isEmpty()) {
             init()
         }
 
-        val method = methods[path] ?: return null
+        this.webRequest = webRequest
+        this.webResponse = WebResponse(
+            200, mutableMapOf(
+                "content-type" to "text/html",
+            ), ""
+        )
 
-        return method.call(this)
+        val method = methods[webRequest.path] ?: return null
+
+        this.webResponse.body = serializeResponse(method.call(this))
+
+        return this.webResponse
     }
 
-//    fun execute(message: String) {
-//        if (methods.isEmpty()) {
-//            init()
-//        }
-//
-//        // message = {"call": "hello", "args": []}
-//        val callObj = Utils.GLOBAL_OBJ_MAPPER.readTree(message)
-//        if (!callObj.has("call") || !callObj.has("args")) {
-//            return
-//        }
-//
-//        val call = callObj["call"].asText()
-//        val args = callObj["args"]
-//
-//        val method = methods[call] ?: return
-//
-//        // +1 por que o primeiro parametro é o this
-//        if (method.parameters.size != args.size() + 1) {
-//            return
-//        }
-//
-//        if (method.parameters.size == 1) {
-//            method.call(this)
-//            return
-//        } else {
-//            val params = mutableListOf<Any?>()
-//            params.add(this)
-//
-//            args.forEachIndexed { index, it ->
-//                val param = method.parameters[index + 1]
-//                params.add(parallelizeParam(it, param.type))
-//            }
-//
-//            method.call(*params.toTypedArray())
-//        }
-//    }
+    private fun serializeResponse(response: Any?): String {
+        if (response == null) {
+            return ""
+        }
 
+        return when (response) {
+            is String -> {
+                response
+            }
+
+            else -> {
+                response.toString()
+            }
+        }
+    }
+}
+
+data class WebRequest(
+    val path: String,
+    val method: String,
+    val absolutePath: String
+)
+
+class WebResponse(
+    var status: Int,
+    val headers: MutableMap<String, String>,
+    var body: String
+) {
+    fun serialize(): String {
+        val builder = StringBuilder()
+
+        builder.append("HTTP/1.1 $status\r\n")
+
+        headers.forEach { (key, value) ->
+            builder.append("$key: $value\r\n")
+        }
+
+        builder.append("\r\n")
+        builder.append(body)
+
+        return builder.toString()
+    }
 }
