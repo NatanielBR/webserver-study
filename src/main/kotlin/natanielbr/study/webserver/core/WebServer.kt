@@ -7,6 +7,8 @@ import java.net.ServerSocket
 class WebServer {
     val controllerMap = mutableMapOf<String, WebController>()
 
+    var globalErrorHandler = DefaultHttpErrorHandlers()
+
     init {
         // get all class using Annotation Path
         val reflections = Reflections("")
@@ -26,7 +28,7 @@ class WebServer {
                 socket.getInputStream().bufferedReader().readLine().also {
                     val parts = it.split(" ")
                     method = parts[0]
-                    path = parts[1]
+                    path = parts[1].substring(1)
                 }
                 val response = socket.getOutputStream().bufferedWriter()
 
@@ -43,18 +45,24 @@ class WebServer {
 
                 val controller = controllerMap[controllerPath]
                 if (controller == null) {
-                    response.write("HTTP/1.1 404 Not Found\r\n")
-                    response.write("Content-Type: text/html\r\n")
+                    val result = kotlin.runCatching {
+
+                        response.write("HTTP/1.1 404\r\n")
+                        response.write("Content-Type: text/html\r\n")
+
+                        globalErrorHandler.error404()
+                    }.onFailure {
+                        response.write("HTTP/1.1 500\r\n")
+                        response.write("Content-Type: text/html\r\n")
+                        globalErrorHandler.error500()
+                    }
+
+                    response.write("\r\n")
+                    response.write(result.getOrNull()!!.toString())
                 } else {
                     val result = controller.execute(WebRequest(controllerMethod, method, path), "")
 
-                    if (result == null) {
-                        response.write("HTTP/1.1 404 Not Found\r\n")
-                        response.write("Content-Type: text/html\r\n")
-                    } else {
-                        response.write(result.serialize())
-                    }
-
+                    response.write(result.serialize())
                 }
 
                 response.flush()
@@ -62,6 +70,45 @@ class WebServer {
             }
         }
     }
+
+    companion object {
+        fun serializeResponse(response: Any?): String {
+            if (response == null) {
+                return ""
+            }
+
+            return when (response) {
+                is String -> {
+                    response
+                }
+
+                else -> {
+                    response.toString()
+                }
+            }
+        }
+    }
 }
 
 annotation class Path(val path: String)
+
+interface HttpErrorHandlers {
+    fun error404(): Any
+    fun error500(): Any
+
+    fun anyError(status: Int): Any
+}
+
+class DefaultHttpErrorHandlers : HttpErrorHandlers {
+    override fun error404(): Any {
+        return "Error 404 - Not Found"
+    }
+
+    override fun error500(): Any {
+        return "Error 500 - Internal Server Error"
+    }
+
+    override fun anyError(status: Int): Any {
+        return "Error $status"
+    }
+}

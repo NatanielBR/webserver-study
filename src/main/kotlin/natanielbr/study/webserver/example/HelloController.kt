@@ -14,4 +14,8 @@ class HelloController: WebController() {
         response.status = 404
         return "not found"
     }
+
+    fun throw500Error(): String {
+        throw Exception("500 error")
+    }
 }

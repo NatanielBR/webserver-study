@@ -1,5 +1,6 @@
 package natanielbr.study.webserver.core
 
+import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
 import kotlin.reflect.KCallable
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMembers
@@ -24,7 +25,7 @@ open interface WebGetParameter : WebParameter {
     fun asAsArray(): List<*>
 }
 
-open class WebController {
+open class WebController: HttpErrorHandlers {
     private val methods = mutableMapOf<String, KCallable<*>>()
     private lateinit var webRequest: WebRequest
     private lateinit var webResponse: WebResponse
@@ -91,7 +92,7 @@ open class WebController {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    fun execute(webRequest: WebRequest, parameters: String): WebResponse? {
+    fun execute(webRequest: WebRequest, parameters: String): WebResponse {
         if (methods.isEmpty()) {
             init()
         }
@@ -103,27 +104,34 @@ open class WebController {
             ), ""
         )
 
-        val method = methods[webRequest.path] ?: return null
+        val method = methods[webRequest.path]
 
-        this.webResponse.body = serializeResponse(method.call(this))
+        if (method == null) {
+            this.webResponse.status = 404
+            this.webResponse.body = serializeResponse(error404())
+            return this.webResponse
+        }
+
+        kotlin.runCatching {
+            this.webResponse.body = serializeResponse(method.call(this))
+        }.onFailure {
+            this.webResponse.status = 500
+            this.webResponse.body = serializeResponse(error500())
+        }
 
         return this.webResponse
     }
 
-    private fun serializeResponse(response: Any?): String {
-        if (response == null) {
-            return ""
-        }
+    override fun error404(): Any {
+        return "Error 404 - Not Found"
+    }
 
-        return when (response) {
-            is String -> {
-                response
-            }
+    override fun error500(): Any {
+        return "Error 500 - Internal Server Error"
+    }
 
-            else -> {
-                response.toString()
-            }
-        }
+    override fun anyError(status: Int): Any {
+        return "Error $status"
     }
 }
 
