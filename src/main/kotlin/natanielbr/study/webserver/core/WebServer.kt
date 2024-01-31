@@ -1,6 +1,5 @@
 package natanielbr.study.webserver.core
 
-import natanielbr.study.webserver.example.HelloController
 import org.reflections.Reflections
 import java.net.ServerSocket
 
@@ -25,37 +24,78 @@ class WebServer {
                 val socket = server.accept()
                 val method: String
                 var path: String
-                socket.getInputStream().bufferedReader().readLine().also {
-                    val parts = it.split(" ")
-                    method = parts[0]
-                    path = if (parts[1].count { it == '/' } > 1) {
-                        // example: /aa/bb/cc
-                        parts[1].substring(1)
-                    } else {
-                        // example: /aa
-                        parts[1]
+                val requestHeaders = mutableMapOf<String, String>()
+                var requestBody = ""
+
+                socket.getInputStream()
+                    .let {
+                        val builder = StringBuilder()
+                        var available: Int = it.available()
+
+                        while (available > 0) {
+                            builder.append(it.read().toChar())
+                            available = it.available()
+                        }
+
+                        builder.toString()
                     }
-                }
-                println("""
+                    .also {
+                        val lines = it.split("\r\n")
+                        var lineIndex = 0
+
+                        val parts = lines[lineIndex++].split(" ")
+                        method = parts[0]
+                        path = if (parts[1].count { it == '/' } > 1) {
+                            // example: /aa/bb/cc
+                            parts[1].substring(1)
+                        } else {
+                            // example: /aa
+                            parts[1]
+                        }
+
+                        if (lines[lineIndex] == "") {
+                            // sem headers
+                            lineIndex++
+                        } else {
+                            // le todos os headers
+                            while (true) {
+                                val headerParts = lines[lineIndex++].split(": ")
+                                requestHeaders[headerParts[0].lowercase()] = headerParts[1]
+
+                                if (lines[lineIndex] == "") {
+                                    break
+                                }
+                            }
+                        }
+
+                        if (lines[lineIndex] == "") {
+                            // le o body
+                            requestBody = lines[lineIndex + 1]
+                        }
+                    }
+
+                println(
+                    """
                     method: $method
                     path: $path
-                """.trimIndent())
+                """.trimIndent()
+                )
 
                 val response = socket.getOutputStream().bufferedWriter()
 
                 val paths = path.split("/", limit = 2)
                 var controllerPath = paths[0]
                 var controllerMethod = paths[1]
-                var parameters = ""
-
                 run {
-                    val parts = controllerMethod.split("?", limit = 2)
+                    if (method != "POST") {
+                        val parts = controllerMethod.split("?", limit = 2)
 
-                    if (parts.size == 1) {
-                        controllerMethod = parts[0]
-                    } else {
-                        controllerMethod = parts[0]
-                        parameters = parts[1]
+                        if (parts.size == 1) {
+                            controllerMethod = parts[0]
+                        } else {
+                            controllerMethod = parts[0]
+                            requestBody = parts[1]
+                        }
                     }
                 }
 
@@ -66,11 +106,13 @@ class WebServer {
                     controllerMethod = "index"
                 }
 
-                println("""
+                println(
+                    """
                     controllerPath: $controllerPath
                     controllerMethod: $controllerMethod
-                    parameters: $parameters
-                """.trimIndent())
+                    parameters: $requestBody
+                """.trimIndent()
+                )
 
                 val controller = controllerMap[controllerPath]
                 if (controller == null) {
@@ -89,7 +131,13 @@ class WebServer {
                     response.write("\r\n")
                     response.write(result.getOrNull()!!.toString())
                 } else {
-                    val result = controller.execute(WebRequest(controllerMethod, method, path), parameters)
+                    val result = controller.execute(
+                        WebRequest(
+                            controllerMethod, method,
+                            requestHeaders, requestBody,
+                            path
+                        ), requestBody
+                    )
 
                     response.write(result.serialize())
                 }

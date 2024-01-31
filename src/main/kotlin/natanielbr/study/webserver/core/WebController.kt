@@ -1,5 +1,6 @@
 package natanielbr.study.webserver.core
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
 import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
 import kotlin.math.log
@@ -28,7 +29,7 @@ open interface WebGetParameter : WebParameter {
     fun asAsArray(): List<*>
 }
 
-open class WebController: HttpErrorHandlers {
+open class WebController : HttpErrorHandlers {
     private val methods = mutableMapOf<String, KCallable<*>>()
     private lateinit var webRequest: WebRequest
     private lateinit var webResponse: WebResponse
@@ -42,7 +43,19 @@ open class WebController: HttpErrorHandlers {
         val methods = this::class.declaredMembers
 
         methods.forEach {
-            this.methods[it.name] = it
+            val postAnnotation = it.annotations.find { it is Post } as? Post
+            var method = if (postAnnotation != null) {
+                "post"
+            } else {
+                "get"
+            }
+
+            this.methods["${method}_${it.name}"] = it
+
+            // has Get annotation
+            if (it.annotations.find { it is Get } != null) {
+                this.methods["get_${it.name}"] = it
+            }
         }
     }
 
@@ -107,7 +120,7 @@ open class WebController: HttpErrorHandlers {
             ), ""
         )
 
-        val method = methods[webRequest.path]
+        val method = methods["${request.method.lowercase()}_${webRequest.path}"]
 
         if (method == null) {
             this.webResponse.status = 404
@@ -117,7 +130,38 @@ open class WebController: HttpErrorHandlers {
 
         kotlin.runCatching {
             val methodParams = mutableListOf<Any>()
-            val httpParameters = parameters.split("&").map { it.split("=") }.associate { it[0] to it[1] }
+            val httpParameters: Map<String, String> = if (webRequest.method == "GET") {
+                parameters.split("&").map { it.split("=") }.associate { it[0] to it[1] }
+            } else {
+                if (webRequest.headers["content-type"] == "application/json") {
+                    kotlin.runCatching {
+                        val objectMapper = ObjectMapper()
+
+                        val obj = objectMapper.readTree(parameters)
+                        // checa se é um obj, se for continua, se não por enquanto retorna um erro
+                        // mas depois terá que fazer o serialize do array para o método
+                        if (obj.isObject) {
+                            // checa se todos os valores não são objetos ou arrays
+                            obj.fields().forEach {
+                                if (it.value.isObject || it.value.isArray) {
+                                    throw Exception("Invalid JSON")
+                                }
+                            }
+                            obj.fields().asSequence().toList().associate { it.key to it.value.asText() }
+                        } else {
+                            mapOf()
+                        }
+                    }.getOrElse {
+                        // todo: depois melhorar isso, esta feio
+                        this.webResponse.status = 400
+                        this.webResponse.body = serializeResponse(error500(it))
+
+                        return@execute this.webResponse
+                    }
+                } else {
+                    mapOf()
+                }
+            }
 
             method.parameters.forEach {
                 if (it.type.jvmErasure.isInstance(this)) {
@@ -158,6 +202,8 @@ open class WebController: HttpErrorHandlers {
 data class WebRequest(
     val path: String,
     val method: String,
+    val headers: MutableMap<String, String>,
+    val body: String,
     val absolutePath: String
 )
 
@@ -181,3 +227,6 @@ class WebResponse(
         return builder.toString()
     }
 }
+
+annotation class Post(val contentType: String = "application/json")
+annotation class Get()
