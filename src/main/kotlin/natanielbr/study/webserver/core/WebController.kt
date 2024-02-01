@@ -7,6 +7,7 @@ import kotlin.math.log
 import kotlin.reflect.KCallable
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMembers
+import kotlin.reflect.javaType
 import kotlin.reflect.jvm.jvmErasure
 
 open interface WebParameter {
@@ -108,6 +109,7 @@ open class WebController : HttpErrorHandlers {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
+    @OptIn(ExperimentalStdlibApi::class)
     fun execute(webRequest: WebRequest, parameters: String): WebResponse {
         if (methods.isEmpty()) {
             init()
@@ -131,7 +133,11 @@ open class WebController : HttpErrorHandlers {
         kotlin.runCatching {
             val methodParams = mutableListOf<Any>()
             val httpParameters: Map<String, String> = if (webRequest.method == "GET") {
-                parameters.split("&").map { it.split("=") }.associate { it[0] to it[1] }
+                if (parameters.isEmpty()) {
+                    mapOf()
+                } else {
+                    parameters.split("&").map { it.split("=") }.associate { it[0] to it[1] }
+                }
             } else {
                 if (webRequest.headers["content-type"] == "application/json") {
                     kotlin.runCatching {
@@ -148,6 +154,10 @@ open class WebController : HttpErrorHandlers {
                                 }
                             }
                             obj.fields().asSequence().toList().associate { it.key to it.value.asText() }
+                        } else if (obj.isArray) {
+                            // caso o json raiz seja um array, retorna um map
+                            // com a chave $array e o valor sendo o array
+                            mapOf("\$array" to obj.asText())
                         } else {
                             mapOf()
                         }
@@ -168,11 +178,23 @@ open class WebController : HttpErrorHandlers {
                     // first parameter is instance
                     methodParams.add(this)
                 } else {
-                    // any parameter
-                    val paramValue = httpParameters[it.name] ?: throw Exception("Parameter ${it.name} not found")
-                    val serialized = serializeParameter(paramValue, it.type.jvmErasure.java)
 
-                    methodParams.add(serialized)
+                    if (
+                        (it.type.jvmErasure.java == List::class.java || it.type.jvmErasure.java == Array::class.java)
+                        && httpParameters.containsKey("\$array")
+                    ) {
+                        // parametro é um array e a raiz do json é um array
+                        val serialized = serializeParameter(httpParameters["\$array"]!!, it.type.javaType)
+                        methodParams.add(serialized)
+
+                    } else {
+                        // any parameter
+                        val paramValue = httpParameters[it.name] ?: throw Exception("Parameter ${it.name} not found")
+                        val serialized = serializeParameter(paramValue, it.type.javaType)
+
+                        methodParams.add(serialized)
+                    }
+
                 }
             }
 

@@ -9,9 +9,19 @@ import natanielbr.study.webserver.core.WebController
 class HelloController: WebController() {
 
     @Get
+    fun index(): String {
+        return "ola!"
+    }
+
+    @Get
     @Post
-    fun index(name: String): String {
+    fun ola(name: String): String {
         return "ola $name!"
+    }
+
+    @Post
+    fun index2(numeros: List<Int>): String {
+        return "${numeros.sum()}!"
     }
 
     fun noFoundTest(): String {

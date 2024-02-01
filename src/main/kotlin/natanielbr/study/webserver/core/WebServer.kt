@@ -1,11 +1,16 @@
 package natanielbr.study.webserver.core
 
 import org.reflections.Reflections
+import java.io.Closeable
+import java.lang.reflect.Type
 import java.net.ServerSocket
+import java.net.SocketException
+import kotlin.concurrent.thread
+import kotlin.math.log
 
-class WebServer {
+class WebServer : Closeable {
     val controllerMap = mutableMapOf<String, WebController>()
-
+    private val serverSocket = ServerSocket(8080)
     var globalErrorHandler = DefaultHttpErrorHandlers()
 
     init {
@@ -19,134 +24,148 @@ class WebServer {
     }
 
     fun start() {
-        ServerSocket(8080).use { server ->
-            while (true) {
-                val socket = server.accept()
-                val method: String
-                var path: String
-                val requestHeaders = mutableMapOf<String, String>()
-                var requestBody = ""
+        thread {
+            kotlin.runCatching {
+                while (!serverSocket.isClosed) {
+                    val socket = serverSocket.accept()
 
-                socket.getInputStream()
-                    .let {
-                        val builder = StringBuilder()
-                        var available: Int = it.available()
+                    kotlin.runCatching {
+                        val method: String
+                        var path: String
+                        val requestHeaders = mutableMapOf<String, String>()
+                        var requestBody = ""
 
-                        while (available > 0) {
-                            builder.append(it.read().toChar())
-                            available = it.available()
-                        }
+                        socket.getInputStream()
+                            .let {
+                                val builder = StringBuilder()
+                                Thread.sleep(20) // available() sometimes return 0
+                                var available: Int = it.available()
 
-                        builder.toString()
-                    }
-                    .also {
-                        val lines = it.split("\r\n")
-                        var lineIndex = 0
+                                while (available > 0) {
+                                    builder.append(it.read().toChar())
+                                    available = it.available()
+                                }
 
-                        val parts = lines[lineIndex++].split(" ")
-                        method = parts[0]
-                        path = if (parts[1].count { it == '/' } > 1) {
-                            // example: /aa/bb/cc
-                            parts[1].substring(1)
-                        } else {
-                            // example: /aa
-                            parts[1]
-                        }
+                                builder.toString()
+                            }
+                            .also {
+                                val lines = it.split("\r\n")
+                                var lineIndex = 0
 
-                        if (lines[lineIndex] == "") {
-                            // sem headers
-                            lineIndex++
-                        } else {
-                            // le todos os headers
-                            while (true) {
-                                val headerParts = lines[lineIndex++].split(": ")
-                                requestHeaders[headerParts[0].lowercase()] = headerParts[1]
+                                val parts = lines[lineIndex++].split(" ")
+                                method = parts[0]
+                                path = if (parts[1].count { it == '/' } > 1) {
+                                    // example: /aa/bb/cc
+                                    parts[1].substring(1)
+                                } else {
+                                    // example: /aa
+                                    parts[1]
+                                }
 
                                 if (lines[lineIndex] == "") {
-                                    break
+                                    // sem headers
+                                    lineIndex++
+                                } else {
+                                    // le todos os headers
+                                    while (true) {
+                                        val headerParts = lines[lineIndex++].split(": ")
+                                        requestHeaders[headerParts[0].lowercase()] = headerParts[1]
+
+                                        if (lines[lineIndex] == "") {
+                                            break
+                                        }
+                                    }
+                                }
+
+                                if (lines[lineIndex] == "") {
+                                    // le o body
+                                    requestBody = lines[lineIndex + 1]
+                                }
+                            }
+
+                        println(
+                            """
+                    method: $method
+                    path: $path
+                """.trimIndent()
+                        )
+
+                        val response = socket.getOutputStream().bufferedWriter()
+
+                        val paths = path.split("/", limit = 2)
+                        var controllerPath = paths[0]
+                        var controllerMethod = paths[1]
+                        run {
+                            if (method != "POST") {
+                                val parts = controllerMethod.split("?", limit = 2)
+
+                                if (parts.size == 1) {
+                                    controllerMethod = parts[0]
+                                } else {
+                                    controllerMethod = parts[0]
+                                    requestBody = parts[1]
                                 }
                             }
                         }
 
-                        if (lines[lineIndex] == "") {
-                            // le o body
-                            requestBody = lines[lineIndex + 1]
+                        if (controllerPath == "") {
+                            controllerPath = "/"
                         }
-                    }
-
-                println(
-                    """
-                    method: $method
-                    path: $path
-                """.trimIndent()
-                )
-
-                val response = socket.getOutputStream().bufferedWriter()
-
-                val paths = path.split("/", limit = 2)
-                var controllerPath = paths[0]
-                var controllerMethod = paths[1]
-                run {
-                    if (method != "POST") {
-                        val parts = controllerMethod.split("?", limit = 2)
-
-                        if (parts.size == 1) {
-                            controllerMethod = parts[0]
-                        } else {
-                            controllerMethod = parts[0]
-                            requestBody = parts[1]
+                        if (controllerMethod == "") {
+                            controllerMethod = "index"
                         }
-                    }
-                }
 
-                if (controllerPath == "") {
-                    controllerPath = "/"
-                }
-                if (controllerMethod == "") {
-                    controllerMethod = "index"
-                }
-
-                println(
-                    """
+                        println(
+                            """
                     controllerPath: $controllerPath
                     controllerMethod: $controllerMethod
                     parameters: $requestBody
                 """.trimIndent()
-                )
+                        )
 
-                val controller = controllerMap[controllerPath]
-                if (controller == null) {
-                    val result = kotlin.runCatching {
+                        val controller = controllerMap[controllerPath]
+                        if (controller == null) {
+                            val result = kotlin.runCatching {
 
-                        response.write("HTTP/1.1 404\r\n")
-                        response.write("Content-Type: text/html\r\n")
+                                response.write("HTTP/1.1 404\r\n")
+                                response.write("Content-Type: text/html\r\n")
 
-                        globalErrorHandler.error404()
+                                globalErrorHandler.error404()
+                            }.onFailure {
+                                response.write("HTTP/1.1 500\r\n")
+                                response.write("Content-Type: text/html\r\n")
+                                globalErrorHandler.error500(it)
+                            }
+
+                            response.write("\r\n")
+                            response.write(result.getOrNull()!!.toString())
+                        } else {
+                            val result = controller.execute(
+                                WebRequest(
+                                    controllerMethod, method,
+                                    requestHeaders, requestBody,
+                                    path
+                                ), requestBody
+                            )
+
+                            response.write(result.serialize())
+                        }
+
+                        response.flush()
                     }.onFailure {
-                        response.write("HTTP/1.1 500\r\n")
-                        response.write("Content-Type: text/html\r\n")
-                        globalErrorHandler.error500(it)
+                        it.printStackTrace()
                     }
 
-                    response.write("\r\n")
-                    response.write(result.getOrNull()!!.toString())
-                } else {
-                    val result = controller.execute(
-                        WebRequest(
-                            controllerMethod, method,
-                            requestHeaders, requestBody,
-                            path
-                        ), requestBody
-                    )
-
-                    response.write(result.serialize())
+                    socket.close()
                 }
-
-                response.flush()
-                socket.close()
+            }.onFailure {
+                if (it.message != "Socket closed") {
+                    it.printStackTrace()
+                }
             }
         }
     }
+
 
     companion object {
         fun serializeResponse(response: Any?): String {
@@ -165,14 +184,20 @@ class WebServer {
             }
         }
 
-        fun serializeParameter(parameter: String, type: Class<*>): Any {
-            return when (type) {
-                String::class.java -> {
+        fun serializeParameter(parameter: String, type: Type): Any {
+            return when (type.typeName) {
+                "java.lang.String" -> {
                     parameter
                 }
 
-                Int::class.java -> {
+                "java.lang.Integer" -> {
                     parameter.toInt()
+                }
+
+                "java.util.List<java.lang.Integer>" -> {
+                    parameter.split(",").map {
+                        serializeParameter(it, Int::class.java)
+                    }
                 }
 
                 else -> {
@@ -180,6 +205,10 @@ class WebServer {
                 }
             }
         }
+    }
+
+    override fun close() {
+        serverSocket.close()
     }
 }
 
