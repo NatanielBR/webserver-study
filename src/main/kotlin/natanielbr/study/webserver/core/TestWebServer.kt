@@ -1,18 +1,24 @@
 package natanielbr.study.webserver.core
 
+import kotlinx.coroutines.runBlocking
 import java.net.http.HttpClient
+import kotlin.concurrent.thread
 
 object TestWebServer {
 
-    fun useTestServer(func: SimpleHttpClient.(WebServer) -> Unit) {
-        val server = WebServer()
+    fun useTestServer(server: WebServer = WebServer(), func: SimpleHttpClient.(WebServer) -> Unit) {
         val simpleHttpClient = SimpleHttpClient("http://localhost:8080")
 
-        server.start()
+
+        kotlin.runCatching {
+            server.start()
+        }.onFailure {
+            if (it.message != "Server already started") {
+                throw it
+            }
+        }
 
         func(simpleHttpClient, server)
-
-        server.close()
     }
 
 }

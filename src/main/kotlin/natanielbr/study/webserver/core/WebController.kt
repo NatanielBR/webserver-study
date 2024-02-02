@@ -3,7 +3,6 @@ package natanielbr.study.webserver.core
 import com.fasterxml.jackson.databind.ObjectMapper
 import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
 import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
-import kotlin.math.log
 import kotlin.reflect.KCallable
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMembers
@@ -40,7 +39,7 @@ open class WebController : HttpErrorHandlers {
     protected val response: WebResponse
         get() = webResponse
 
-    private fun init() {
+    fun initialize() {
         val methods = this::class.declaredMembers
 
         methods.forEach {
@@ -111,10 +110,6 @@ open class WebController : HttpErrorHandlers {
      */
     @OptIn(ExperimentalStdlibApi::class)
     fun execute(webRequest: WebRequest, parameters: String): WebResponse {
-        if (methods.isEmpty()) {
-            init()
-        }
-
         this.webRequest = webRequest
         this.webResponse = WebResponse(
             200, mutableMapOf(
