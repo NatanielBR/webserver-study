@@ -101,86 +101,80 @@ class WebServer : Closeable {
         val globalErrorHandler: HttpErrorHandlers,
         val controllerMap: Map<String, WebController>
     ) : Runnable {
+        private fun getRequestData(socket: Socket): RequestData {
+            val method: String
+            var path: String
+            val requestHeaders = mutableMapOf<String, String>()
+            var requestBody = ""
+
+            socket.getInputStream().let {
+                val builder = StringBuilder()
+                Thread.sleep(20) // available() sometimes return 0
+                var available: Int = it.available()
+
+                while (available > 0) {
+                    builder.append(it.read().toChar())
+                    available = it.available()
+                }
+
+                builder.toString()
+            }.also {
+                val lines = it.split("\r\n")
+                var lineIndex = 0
+
+                val parts = lines[lineIndex++].split(" ")
+                method = parts[0]
+                path = if (parts[1].count { it == '/' } > 1) {
+                    // example: /aa/bb/cc
+                    parts[1].substring(1)
+                } else {
+                    // example: /aa
+                    parts[1]
+                }
+
+                if (lines[lineIndex] == "") {
+                    // sem headers
+                    lineIndex++
+                } else {
+                    // le todos os headers
+                    while (true) {
+                        val headerParts = lines[lineIndex++].split(": ")
+                        requestHeaders[headerParts[0].lowercase()] = headerParts[1]
+
+                        if (lines[lineIndex] == "") {
+                            break
+                        }
+                    }
+                }
+
+                if (lines[lineIndex] == "") {
+                    // le o body
+                    requestBody = lines[lineIndex + 1]
+                }
+            }
+
+            if (method != "POST") {
+                val parts = path.split("?", limit = 2)
+
+                path = parts[0]
+                if (parts.size != 1) {
+                    requestBody = parts[1]
+                }
+            }
+
+            return RequestData(method, path, requestHeaders, requestBody)
+        }
+
         override fun run() {
             socket.use {
                 kotlin.runCatching {
-                    val method: String
-                    var path: String
-                    val requestHeaders = mutableMapOf<String, String>()
-                    var requestBody = ""
-
-                    socket.getInputStream()
-                        .let {
-                            val builder = StringBuilder()
-                            Thread.sleep(20) // available() sometimes return 0
-                            var available: Int = it.available()
-
-                            while (available > 0) {
-                                builder.append(it.read().toChar())
-                                available = it.available()
-                            }
-
-                            builder.toString()
-                        }
-                        .also {
-                            val lines = it.split("\r\n")
-                            var lineIndex = 0
-
-                            val parts = lines[lineIndex++].split(" ")
-                            method = parts[0]
-                            path = if (parts[1].count { it == '/' } > 1) {
-                                // example: /aa/bb/cc
-                                parts[1].substring(1)
-                            } else {
-                                // example: /aa
-                                parts[1]
-                            }
-
-                            if (lines[lineIndex] == "") {
-                                // sem headers
-                                lineIndex++
-                            } else {
-                                // le todos os headers
-                                while (true) {
-                                    val headerParts = lines[lineIndex++].split(": ")
-                                    requestHeaders[headerParts[0].lowercase()] = headerParts[1]
-
-                                    if (lines[lineIndex] == "") {
-                                        break
-                                    }
-                                }
-                            }
-
-                            if (lines[lineIndex] == "") {
-                                // le o body
-                                requestBody = lines[lineIndex + 1]
-                            }
-                        }
-
-                    println(
-                        """
-                    method: $method
-                    path: $path
-                """.trimIndent()
-                    )
+                    val requestData = getRequestData(socket)
 
                     val response = socket.getOutputStream().bufferedWriter()
 
-                    val paths = path.split("/", limit = 2)
+                    val paths = requestData.path.split("/", limit = 2)
                     var controllerPath = paths[0]
                     var controllerMethod = paths[1]
-                    run {
-                        if (method != "POST") {
-                            val parts = controllerMethod.split("?", limit = 2)
-
-                            if (parts.size == 1) {
-                                controllerMethod = parts[0]
-                            } else {
-                                controllerMethod = parts[0]
-                                requestBody = parts[1]
-                            }
-                        }
-                    }
 
                     if (controllerPath == "") {
                         controllerPath = "/"
@@ -193,7 +187,6 @@ class WebServer : Closeable {
                         """
                     controllerPath: $controllerPath
                     controllerMethod: $controllerMethod
-                    parameters: $requestBody
                 """.trimIndent()
                     )
 
@@ -216,10 +209,10 @@ class WebServer : Closeable {
                     } else {
                         val result = controller.execute(
                             WebRequest(
-                                controllerMethod, method,
-                                requestHeaders, requestBody,
-                                path
-                            ), requestBody
+                                controllerMethod, requestData.method,
+                                requestData.headers, requestData.body,
+                                requestData.path
+                            )
                         )
 
                         response.write(result.serialize())
@@ -257,3 +250,10 @@ class DefaultHttpErrorHandlers : HttpErrorHandlers {
         return "Error $status"
     }
 }
+
+data class RequestData(
+    val method: String,
+    val path: String,
+    val headers: Map<String, String>,
+    val body: String
+)

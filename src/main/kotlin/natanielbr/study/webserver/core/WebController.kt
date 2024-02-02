@@ -140,7 +140,7 @@ open class WebController : HttpErrorHandlers {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    fun execute(webRequest: WebRequest, parameters: String): WebResponse {
+    fun execute(webRequest: WebRequest): WebResponse {
         this.webRequest = webRequest
         this.webResponse = WebResponse(
             200, mutableMapOf(
@@ -158,17 +158,17 @@ open class WebController : HttpErrorHandlers {
 
         val httpParameters: Map<String, String>? = kotlin.runCatching {
             if (webRequest.method == "GET") {
-                if (parameters.isEmpty()) {
+                if (webRequest.body.isEmpty()) {
                     mapOf()
                 } else {
-                    parameters.split("&").map { it.split("=") }.associate { it[0] to it[1] }
+                    webRequest.body.split("&").map { it.split("=") }.associate { it[0] to it[1] }
                 }
             } else {
                 if (webRequest.headers["content-type"] == "application/json") {
                     kotlin.runCatching {
                         val objectMapper = ObjectMapper()
 
-                        val obj = objectMapper.readTree(parameters)
+                        val obj = objectMapper.readTree(webRequest.body)
                         // checa se é um obj, se for continua, se não por enquanto retorna um erro
                         // mas depois terá que fazer o serialize do array para o método
                         if (obj.isObject) {
@@ -226,7 +226,7 @@ open class WebController : HttpErrorHandlers {
 data class WebRequest(
     val path: String,
     val method: String,
-    val headers: MutableMap<String, String>,
+    val headers: Map<String, String>,
     val body: String,
     val absolutePath: String
 )
