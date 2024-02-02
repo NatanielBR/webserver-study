@@ -20,8 +20,8 @@ class HelloController: WebController() {
     }
 
     @Post
-    fun index2(numeros: List<Int>): String {
-        return "${numeros.sum()}!"
+    fun sum(numeros: List<Int>): String {
+        return "${numeros.sum()}"
     }
 
     fun noFoundTest(): String {

@@ -75,7 +75,7 @@ class WebServer : Closeable {
                     parameter
                 }
 
-                "java.lang.Integer" -> {
+                "java.lang.Integer", "int" -> {
                     parameter.toInt()
                 }
 

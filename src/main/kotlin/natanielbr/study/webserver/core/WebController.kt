@@ -152,7 +152,7 @@ open class WebController : HttpErrorHandlers {
                         } else if (obj.isArray) {
                             // caso o json raiz seja um array, retorna um map
                             // com a chave $array e o valor sendo o array
-                            mapOf("\$array" to obj.asText())
+                            mapOf("\$array" to obj.toString().removeSurrounding("[", "]"))
                         } else {
                             mapOf()
                         }

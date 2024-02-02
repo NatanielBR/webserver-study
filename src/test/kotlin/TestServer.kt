@@ -31,6 +31,14 @@ class TestServer {
         assertEquals("ola Natan!", res.body)
     }
 
+    @Test
+    fun testSimplePostArray() = useTestServer(server) {
+        val res = post("/sum", """[1,2,3]""", mapOf("Content-Type" to "application/json"))
+
+        assertEquals(200, res.status)
+        assertEquals("6", res.body)
+    }
+
     companion object {
         lateinit var server: WebServer;
         @JvmStatic
