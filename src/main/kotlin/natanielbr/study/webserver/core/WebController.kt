@@ -103,12 +103,43 @@ open class WebController : HttpErrorHandlers {
         throw NotImplementedError()
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun runEndpoint(method: KCallable<*>, httpParameters: Map<String, String>): Any? {
+        val methodParams = mutableListOf<Any>()
+
+        method.parameters.forEach {
+            if (it.type.jvmErasure.isInstance(this)) {
+                // first parameter is instance
+                methodParams.add(this)
+            } else {
+
+                if (
+                    (it.type.jvmErasure.java == List::class.java || it.type.jvmErasure.java == Array::class.java)
+                    && httpParameters.containsKey("\$array")
+                ) {
+                    // parametro é um array e a raiz do json é um array
+                    val serialized = serializeParameter(httpParameters["\$array"]!!, it.type.javaType)
+                    methodParams.add(serialized)
+
+                } else {
+                    // any parameter
+                    val paramValue = httpParameters[it.name] ?: throw Exception("Parameter ${it.name} not found")
+                    val serialized = serializeParameter(paramValue, it.type.javaType)
+
+                    methodParams.add(serialized)
+                }
+
+            }
+        }
+
+        return method.call(*methodParams.toTypedArray())
+    }
+
     /**
      * Executa o método com o nome [path] e com os parâmetros [parameters]
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    @OptIn(ExperimentalStdlibApi::class)
     fun execute(webRequest: WebRequest, parameters: String): WebResponse {
         this.webRequest = webRequest
         this.webResponse = WebResponse(
@@ -125,9 +156,8 @@ open class WebController : HttpErrorHandlers {
             return this.webResponse
         }
 
-        kotlin.runCatching {
-            val methodParams = mutableListOf<Any>()
-            val httpParameters: Map<String, String> = if (webRequest.method == "GET") {
+        val httpParameters: Map<String, String>? = kotlin.runCatching {
+            if (webRequest.method == "GET") {
                 if (parameters.isEmpty()) {
                     mapOf()
                 } else {
@@ -167,36 +197,13 @@ open class WebController : HttpErrorHandlers {
                     mapOf()
                 }
             }
+        }.getOrNull()
 
-            method.parameters.forEach {
-                if (it.type.jvmErasure.isInstance(this)) {
-                    // first parameter is instance
-                    methodParams.add(this)
-                } else {
-
-                    if (
-                        (it.type.jvmErasure.java == List::class.java || it.type.jvmErasure.java == Array::class.java)
-                        && httpParameters.containsKey("\$array")
-                    ) {
-                        // parametro é um array e a raiz do json é um array
-                        val serialized = serializeParameter(httpParameters["\$array"]!!, it.type.javaType)
-                        methodParams.add(serialized)
-
-                    } else {
-                        // any parameter
-                        val paramValue = httpParameters[it.name] ?: throw Exception("Parameter ${it.name} not found")
-                        val serialized = serializeParameter(paramValue, it.type.javaType)
-
-                        methodParams.add(serialized)
-                    }
-
-                }
-            }
-
-            this.webResponse.body = serializeResponse(method.call(*methodParams.toTypedArray()))
-        }.onFailure {
+        if (httpParameters == null) {
             this.webResponse.status = 500
-            this.webResponse.body = serializeResponse(error500(it))
+            this.webResponse.body = serializeResponse(error500(Exception("Invalid parameters")))
+        } else {
+            this.webResponse.body = serializeResponse(runEndpoint(method, httpParameters))
         }
 
         return this.webResponse
