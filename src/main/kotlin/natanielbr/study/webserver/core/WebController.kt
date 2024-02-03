@@ -1,6 +1,5 @@
 package natanielbr.study.webserver.core
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
 import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
 import kotlin.reflect.KCallable
@@ -104,7 +103,11 @@ open class WebController : HttpErrorHandlers {
     }
 
     @OptIn(ExperimentalStdlibApi::class)
-    private fun runEndpoint(method: KCallable<*>, httpParameters: Map<String, Any?>): Any? {
+    private fun runEndpoint(
+        method: KCallable<*>,
+        request: WebRequest,
+        requestBodySerializer: RequestBodySerializerMap
+    ): Any? {
         val methodParams = mutableListOf<Any>()
 
         method.parameters.forEach {
@@ -115,18 +118,32 @@ open class WebController : HttpErrorHandlers {
 
                 if (
                     (it.type.jvmErasure.java == List::class.java || it.type.jvmErasure.java == Array::class.java)
-                    && httpParameters.containsKey("_")
+                    && request.body.containsKey("_")
                 ) {
                     // parametro é um array e a raiz do json é um array
-                    val serialized = serializeParameter(httpParameters["_"]!!, it.type.javaType)
+                    val serialized = serializeParameter(request.body["_"]!!, it.type.javaType)
                     methodParams.add(serialized)
 
-                } else {
-                    // any parameter
-                    val paramValue = httpParameters[it.name] ?: throw Exception("Parameter ${it.name} not found")
+                } else if (it.type.jvmErasure.java.`package`.name == "java.lang") {
+                    // primitive parameter
+                    val paramValue = request.body[it.name] ?: throw Exception("Parameter ${it.name} not found")
                     val serialized = serializeParameter(paramValue, it.type.javaType)
 
                     methodParams.add(serialized)
+                } else {
+                    // any parameter
+                    val contentType = webRequest.contentType
+                    if (contentType != null) {
+                        val paramValue = requestBodySerializer.serializeObject(
+                            contentType, request.rawBody, it.type.jvmErasure.java
+                        )
+
+                        if (paramValue != null) {
+                            methodParams.add(paramValue)
+                        }
+                    }
+
+
                 }
 
             }
@@ -140,7 +157,7 @@ open class WebController : HttpErrorHandlers {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    fun execute(webRequest: WebRequest): WebResponse {
+    fun execute(webRequest: WebRequest, requestBodySerializer: RequestBodySerializerMap): WebResponse {
         this.webRequest = webRequest
         webResponse = WebResponse(
             200, mutableMapOf(
@@ -155,7 +172,7 @@ open class WebController : HttpErrorHandlers {
             return webResponse
         }
 
-        this.webResponse.body = serializeResponse(runEndpoint(method, request.body))
+        this.webResponse.body = serializeResponse(runEndpoint(method, request, requestBodySerializer))
 
         return this.webResponse
     }
@@ -167,8 +184,12 @@ data class WebRequest(
     val method: String,
     val headers: Map<String, String>,
     val body: Map<String, Any?>,
+    val rawBody: String,
     val absolutePath: String
-)
+) {
+    val contentType: String?
+        get() = headers["content-type"]
+}
 
 class WebResponse(
     var status: Int,

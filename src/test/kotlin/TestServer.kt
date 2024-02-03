@@ -36,7 +36,7 @@ class TestServer {
         val res = post("/whoAre", """{"name": "Natan", "age": 24}""", mapOf("Content-Type" to "application/json"))
 
         assertEquals(200, res.status)
-        assertEquals("ola Natan!", res.body)
+        assertEquals("ola Natan (24)!", res.body)
     }
 
     @Test

@@ -220,7 +220,7 @@ class WebServer : Closeable {
                 throw HttpException("Invalid body", 400)
             }
 
-            return RequestData(httpMethod, path, requestHeaders, bodySerialized)
+            return RequestData(httpMethod, path, requestHeaders, bodySerialized, requestBody)
         }
 
         override fun run() {
@@ -276,9 +276,9 @@ class WebServer : Closeable {
                     var response = controller?.execute(
                         WebRequest(
                             controllerMethod, requestData.method,
-                            requestData.headers, requestData.body,
+                            requestData.headers, requestData.body, requestData.rawBody,
                             requestData.path
-                        )
+                        ), requestBodySerializerMap
                     ) ?: kotlin.runCatching {
                         WebResponse(
                             404,
@@ -393,5 +393,6 @@ data class RequestData(
     val method: String,
     val path: String,
     val headers: Map<String, String>,
-    val body: Map<String, Any?>
+    val body: Map<String, Any?>,
+    val rawBody: String,
 )

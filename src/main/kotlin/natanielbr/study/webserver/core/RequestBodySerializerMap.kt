@@ -27,6 +27,10 @@ class RequestBodySerializerMap {
     fun serialize(contentType: String, obj: String): Map<String, Any?>? {
         return map[contentType]?.serialize(obj)
     }
+
+    fun<R> serializeObject(contentType: String, rawBody: String, jclass: Class<R>): R? {
+        return map[contentType]?.serialize(rawBody, jclass)
+    }
 }
 
 interface RequestBodySerializer {
@@ -38,6 +42,7 @@ interface RequestBodySerializer {
      * @return Translated request body, or null if it's not possible to serialize
      */
     fun serialize(obj: String): Map<String, Any?>?
+    fun<R> serialize(obj: String, jclass: Class<R>): R
 }
 
 class JsonRequestBodySerializer : RequestBodySerializer {
@@ -52,6 +57,10 @@ class JsonRequestBodySerializer : RequestBodySerializer {
                 mapOf("_" to json.toList().map { serializeField(it) })
             }
         }.getOrNull()
+    }
+
+    override fun <R> serialize(obj: String, jclass: Class<R>): R {
+        return objectMapper.readValue(obj, jclass)
     }
 
     private fun serializeField(node: JsonNode): Any? {
@@ -78,5 +87,14 @@ class GetRequestBodySerializer : RequestBodySerializer {
         } else {
             obj.split("&").map { it.split("=") }.associate { it[0] to it[1] }
         }
+    }
+
+    override fun <R> serialize(obj: String, jclass: Class<R>): R {
+        val params = serialize(obj)
+        val instance = jclass.getDeclaredConstructor(
+            *params.values.map { it::class.java }.toTypedArray()
+        ).newInstance(*params.values.toTypedArray())
+
+        return instance
     }
 }
