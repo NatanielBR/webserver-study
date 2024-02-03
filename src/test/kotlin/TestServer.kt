@@ -32,6 +32,14 @@ class TestServer {
     }
 
     @Test
+    fun testPost() = useTestServer(server) {
+        val res = post("/whoAre", """{"name": "Natan", "age": 24}""", mapOf("Content-Type" to "application/json"))
+
+        assertEquals(200, res.status)
+        assertEquals("ola Natan!", res.body)
+    }
+
+    @Test
     fun testSimplePostArray() = useTestServer(server) {
         val res = post("/sum", """[1,2,3]""", mapOf("Content-Type" to "application/json"))
 

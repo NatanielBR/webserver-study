@@ -327,6 +327,14 @@ class WebServer : Closeable {
                     respondHttp(response)
                 }.onFailure {
                     it.printStackTrace()
+                    respondHttp(
+                        WebResponse(
+                            500,
+                            mutableMapOf(),
+                            ""
+                        ),
+                        it
+                    )
                 }
             }
         }
