@@ -20,6 +20,11 @@ class HelloController: WebController() {
     }
 
     @Post
+    fun whoAre(user: User): String {
+        return "ola ${user.name} (${user.age})!"
+    }
+
+    @Post
     fun sum(numeros: List<Int>): String {
         return "${numeros.sum()}"
     }
@@ -38,3 +43,5 @@ class HelloController: WebController() {
         throw Exception("500 error")
     }
 }
+
+data class User(val name: String, val age: Int)

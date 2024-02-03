@@ -14,6 +14,7 @@ class WebServer : Closeable {
     val middlewares = MiddlewareList<Middleware>()
 
     private val serverSocket = ServerSocket(8080)
+    val requestBodySerializerMap = RequestBodySerializerMap()
     var globalErrorHandler = object : HttpErrorHandlers {}
     var isInitialized = false
 
@@ -39,7 +40,15 @@ class WebServer : Closeable {
                 while (!serverSocket.isClosed) {
                     val socket = serverSocket.accept()
 
-                    Thread(SocketConnection(socket, globalErrorHandler, controllerMap, middlewares)).start()
+                    Thread(
+                        SocketConnection(
+                            socket,
+                            globalErrorHandler,
+                            controllerMap,
+                            middlewares,
+                            requestBodySerializerMap
+                        )
+                    ).start()
                 }
             }.onFailure {
                 if (it.message != "Socket closed") {
@@ -67,19 +76,19 @@ class WebServer : Closeable {
             }
         }
 
-        fun serializeParameter(parameter: String, type: Type): Any {
+        fun serializeParameter(parameter: Any, type: Type): Any {
             return when (type.typeName) {
                 "java.lang.String" -> {
-                    parameter
+                    parameter as String
                 }
 
                 "java.lang.Integer", "int" -> {
-                    parameter.toInt()
+                    parameter as Int
                 }
 
                 "java.util.List<java.lang.Integer>" -> {
-                    parameter.split(",").map {
-                        serializeParameter(it, Int::class.java)
+                    (parameter as List<*>).map {
+                        serializeParameter(it!!, Int::class.java)
                     }
                 }
 
@@ -99,6 +108,7 @@ class WebServer : Closeable {
         val globalErrorHandler: HttpErrorHandlers,
         val controllerMap: Map<String, WebController>,
         val middlewareList: MiddlewareList<Middleware>,
+        val requestBodySerializerMap: RequestBodySerializerMap,
     ) : Runnable {
         private val response = socket.getOutputStream().bufferedWriter()
 
@@ -184,7 +194,33 @@ class WebServer : Closeable {
                 path = absolutePath
             }
 
-            return RequestData(httpMethod, path, requestHeaders, requestBody)
+            val contentType = requestHeaders["content-type"]
+            val bodySerialized: Map<String, Any?>? =
+                if (contentType == null && requestBody.isNotEmpty() && httpMethod == "POST") {
+                    // if there is a body, but no content-type, throw error
+                    throw HttpException("Content-Type header is required", 400)
+                } else {
+                    if (contentType == null && requestBody.isEmpty() && httpMethod == "POST") {
+                        // if there is no content-type, then the body is empty
+                        throw HttpException("Content-Type header is required", 400)
+                    } else if (httpMethod == "GET") {
+                        requestBodySerializerMap.serialize("get_request", requestBody)
+                    } else if (contentType != null) {
+                        if (requestBodySerializerMap.hasSerializer(contentType)) {
+                            requestBodySerializerMap.serialize(contentType, requestBody)!!
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                }
+
+            if (bodySerialized == null) {
+                throw HttpException("Invalid body", 400)
+            }
+
+            return RequestData(httpMethod, path, requestHeaders, bodySerialized)
         }
 
         override fun run() {
@@ -349,5 +385,5 @@ data class RequestData(
     val method: String,
     val path: String,
     val headers: Map<String, String>,
-    val body: String
+    val body: Map<String, Any?>
 )

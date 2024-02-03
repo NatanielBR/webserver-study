@@ -104,7 +104,7 @@ open class WebController : HttpErrorHandlers {
     }
 
     @OptIn(ExperimentalStdlibApi::class)
-    private fun runEndpoint(method: KCallable<*>, httpParameters: Map<String, String>): Any? {
+    private fun runEndpoint(method: KCallable<*>, httpParameters: Map<String, Any?>): Any? {
         val methodParams = mutableListOf<Any>()
 
         method.parameters.forEach {
@@ -115,10 +115,10 @@ open class WebController : HttpErrorHandlers {
 
                 if (
                     (it.type.jvmErasure.java == List::class.java || it.type.jvmErasure.java == Array::class.java)
-                    && httpParameters.containsKey("\$array")
+                    && httpParameters.containsKey("_")
                 ) {
                     // parametro é um array e a raiz do json é um array
-                    val serialized = serializeParameter(httpParameters["\$array"]!!, it.type.javaType)
+                    val serialized = serializeParameter(httpParameters["_"]!!, it.type.javaType)
                     methodParams.add(serialized)
 
                 } else {
@@ -155,53 +155,7 @@ open class WebController : HttpErrorHandlers {
             return webResponse
         }
 
-        val httpParameters: Map<String, String>? = kotlin.runCatching {
-            if (webRequest.method == "GET") {
-                if (webRequest.body.isEmpty()) {
-                    mapOf()
-                } else {
-                    webRequest.body.split("&").map { it.split("=") }.associate { it[0] to it[1] }
-                }
-            } else {
-                if (webRequest.headers["content-type"] == "application/json") {
-                    kotlin.runCatching {
-                        val objectMapper = ObjectMapper()
-
-                        val obj = objectMapper.readTree(webRequest.body)
-                        // checa se é um obj, se for continua, se não por enquanto retorna um erro
-                        // mas depois terá que fazer o serialize do array para o método
-                        if (obj.isObject) {
-                            // checa se todos os valores não são objetos ou arrays
-                            obj.fields().forEach {
-                                if (it.value.isObject || it.value.isArray) {
-                                    throw Exception("Invalid JSON")
-                                }
-                            }
-                            obj.fields().asSequence().toList().associate { it.key to it.value.asText() }
-                        } else if (obj.isArray) {
-                            // caso o json raiz seja um array, retorna um map
-                            // com a chave $array e o valor sendo o array
-                            mapOf("\$array" to obj.toString().removeSurrounding("[", "]"))
-                        } else {
-                            mapOf()
-                        }
-                    }.getOrElse {
-                        // todo: depois melhorar isso, esta feio
-                        this.webResponse = error500(it, this.webResponse)
-
-                        return@execute this.webResponse
-                    }
-                } else {
-                    mapOf()
-                }
-            }
-        }.getOrNull()
-
-        if (httpParameters == null) {
-            this.webResponse = error500(Exception("Invalid parameters"), webResponse)
-        } else {
-            this.webResponse.body = serializeResponse(runEndpoint(method, httpParameters))
-        }
+        this.webResponse.body = serializeResponse(runEndpoint(method, request.body))
 
         return this.webResponse
     }
@@ -212,7 +166,7 @@ data class WebRequest(
     val path: String,
     val method: String,
     val headers: Map<String, String>,
-    val body: String,
+    val body: Map<String, Any?>,
     val absolutePath: String
 )
 
