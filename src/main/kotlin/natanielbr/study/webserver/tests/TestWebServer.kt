@@ -1,8 +1,7 @@
-package natanielbr.study.webserver.core
+package natanielbr.study.webserver.tests
 
-import kotlinx.coroutines.runBlocking
+import natanielbr.study.webserver.core.WebServer
 import java.net.http.HttpClient
-import kotlin.concurrent.thread
 
 object TestWebServer {
 

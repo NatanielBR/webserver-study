@@ -1,5 +1,5 @@
 import natanielbr.study.webserver.core.*
-import natanielbr.study.webserver.core.TestWebServer.useTestServer
+import natanielbr.study.webserver.tests.TestWebServer.useTestServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
