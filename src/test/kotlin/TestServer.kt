@@ -40,13 +40,24 @@ class TestServer {
     }
 
     @Test
-    fun testMiddleware() = useTestServer(server) {
+    fun testMiddlewareBefore() = useTestServer(server) {
         it.middlewares.addBottom(ProtectRoute())
 
         val res = get("/protected")
 
         assertEquals(403, res.status)
         assertEquals("Unauthorized", res.body)
+    }
+
+    @Test
+    fun testMiddlewareAfter() = useTestServer(server) {
+        it.middlewares.addBottom(AddHeader())
+
+        val res = get("/")
+
+        assertEquals(200, res.status)
+        assertEquals("ola!", res.body)
+        assertEquals("Kotlin", res.headers["x-powered-by"]!![0])
     }
 
     companion object {
@@ -72,5 +83,12 @@ class ProtectRoute: MiddlewareAdapter() {
             throw HttpException("Unauthorized", 403)
         }
         return request
+    }
+}
+
+class AddHeader: MiddlewareAdapter() {
+    override fun after(response: WebResponse): WebResponse {
+        response.headers["x-powered-by"] = "Kotlin"
+        return response
     }
 }

@@ -112,7 +112,9 @@ class WebServer : Closeable {
             }
 
             response.write("HTTP/1.1 ${webResponse.status}\r\n")
-            response.write("Content-Type: text/html\r\n")
+            webResponse.headers.forEach { (key, value) ->
+                response.write("$key: $value\r\n")
+            }
             response.write("\r\n")
             response.write(webResponse.body)
             response.flush()
@@ -191,7 +193,6 @@ class WebServer : Closeable {
                     var requestData = getRequestData(socket)
 
                     // process middlewares - before request
-
                     kotlin.runCatching {
                         middlewareList.getOrdered().forEach {
                             requestData = it.before(requestData)
@@ -207,7 +208,7 @@ class WebServer : Closeable {
                                 ),
                                 it
                             )
-                            return
+                            return@use
                         } else {
                             // throw unknown 500 error
                             respondHttp(
@@ -218,6 +219,7 @@ class WebServer : Closeable {
                                 ),
                                 it
                             )
+                            return@use
                         }
                     }
 
@@ -235,41 +237,58 @@ class WebServer : Closeable {
                     }
 
                     val controller = controllerMap[controllerPath]
-                    if (controller == null) {
-                        kotlin.runCatching {
+                    var response = controller?.execute(
+                        WebRequest(
+                            controllerMethod, requestData.method,
+                            requestData.headers, requestData.body,
+                            requestData.path
+                        )
+                    ) ?: kotlin.runCatching {
+                        WebResponse(
+                            404,
+                            mutableMapOf(),
+                            ""
+                        )
+                    }.getOrElse {
+                        WebResponse(
+                            500,
+                            mutableMapOf(),
+                            ""
+                        )
+                    }
+
+                    // process middlewares - after request
+                    kotlin.runCatching {
+                        middlewareList.getOrdered().forEach {
+                            response = it.after(response)
+                        }
+                    }.onFailure {
+                        if (it is HttpException) {
+                            // throw more fancy error
                             respondHttp(
                                 WebResponse(
-                                    404,
-                                    mutableMapOf(),
-                                    ""
-                                )
+                                    it.status,
+                                    it.headers.toMutableMap(),
+                                    it.message!!
+                                ),
+                                it
                             )
-                        }.onFailure {
+                            return@use
+                        } else {
+                            // throw unknown 500 error
                             respondHttp(
                                 WebResponse(
                                     500,
                                     mutableMapOf(),
                                     ""
-                                )
+                                ),
+                                it
                             )
+                            return@use
                         }
-
-                        return@use // close socket
-                    } else {
-                        val result = controller.execute(
-                            WebRequest(
-                                controllerMethod, requestData.method,
-                                requestData.headers, requestData.body,
-                                requestData.path
-                            )
-                        )
-
-                        response.write(result.serialize())
                     }
 
-                    // process middlewares - after request
-
-                    response.flush()
+                    respondHttp(response)
                 }.onFailure {
                     it.printStackTrace()
                 }
