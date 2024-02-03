@@ -24,6 +24,11 @@ class HelloController: WebController() {
         return "${numeros.sum()}"
     }
 
+    @Get
+    fun protected(): String {
+        return "protected"
+    }
+
     fun noFoundTest(): String {
         response.status = 404
         return "not found"

@@ -1,5 +1,5 @@
+import natanielbr.study.webserver.core.*
 import natanielbr.study.webserver.core.TestWebServer.useTestServer
-import natanielbr.study.webserver.core.WebServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import kotlin.test.Test
@@ -39,6 +39,16 @@ class TestServer {
         assertEquals("6", res.body)
     }
 
+    @Test
+    fun testMiddleware() = useTestServer(server) {
+        it.middlewares.addBottom(ProtectRoute())
+
+        val res = get("/protected")
+
+        assertEquals(403, res.status)
+        assertEquals("Unauthorized", res.body)
+    }
+
     companion object {
         lateinit var server: WebServer;
         @JvmStatic
@@ -54,4 +64,13 @@ class TestServer {
         }
     }
 
+}
+
+class ProtectRoute: MiddlewareAdapter() {
+    override fun before(request: RequestData): RequestData {
+        if (request.path == "/protected") {
+            throw HttpException("Unauthorized", 403)
+        }
+        return request
+    }
 }

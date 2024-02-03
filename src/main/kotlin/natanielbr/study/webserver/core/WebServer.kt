@@ -1,21 +1,20 @@
 package natanielbr.study.webserver.core
 
-import kotlinx.coroutines.*
 import kotlinx.coroutines.Runnable
+import natanielbr.study.webserver.utils.MiddlewareList
 import org.reflections.Reflections
 import java.io.Closeable
 import java.lang.reflect.Type
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.SocketException
 import kotlin.concurrent.thread
-import kotlin.math.log
-import kotlin.reflect.full.declaredMembers
 
 class WebServer : Closeable {
     val controllerMap = mutableMapOf<String, WebController>()
+    val middlewares = MiddlewareList<Middleware>()
+
     private val serverSocket = ServerSocket(8080)
-    var globalErrorHandler = DefaultHttpErrorHandlers()
+    var globalErrorHandler = object : HttpErrorHandlers {}
     var isInitialized = false
 
     init {
@@ -39,9 +38,8 @@ class WebServer : Closeable {
             kotlin.runCatching {
                 while (!serverSocket.isClosed) {
                     val socket = serverSocket.accept()
-                    println("Pegou: ${socket.hashCode()}")
 
-                    Thread(SocketConnection(socket, globalErrorHandler, controllerMap)).start()
+                    Thread(SocketConnection(socket, globalErrorHandler, controllerMap, middlewares)).start()
                 }
             }.onFailure {
                 if (it.message != "Socket closed") {
@@ -99,11 +97,31 @@ class WebServer : Closeable {
     private class SocketConnection(
         val socket: Socket,
         val globalErrorHandler: HttpErrorHandlers,
-        val controllerMap: Map<String, WebController>
+        val controllerMap: Map<String, WebController>,
+        val middlewareList: MiddlewareList<Middleware>,
     ) : Runnable {
+        private val response = socket.getOutputStream().bufferedWriter()
+
+        private fun respondHttp(_webResponse: WebResponse, exception: Throwable? = null) {
+            var webResponse = _webResponse
+
+            if (exception != null) {
+                webResponse = globalErrorHandler.error500(exception, webResponse)
+            } else if (webResponse.status == 404) {
+                webResponse = globalErrorHandler.error404(webResponse)
+            }
+
+            response.write("HTTP/1.1 ${webResponse.status}\r\n")
+            response.write("Content-Type: text/html\r\n")
+            response.write("\r\n")
+            response.write(webResponse.body)
+            response.flush()
+        }
+
         private fun getRequestData(socket: Socket): RequestData {
-            val method: String
-            var path: String
+            val httpMethod: String
+            val absolutePath: String
+            val path: String // if GET, remove query string if not, keep it
             val requestHeaders = mutableMapOf<String, String>()
             var requestBody = ""
 
@@ -123,8 +141,8 @@ class WebServer : Closeable {
                 var lineIndex = 0
 
                 val parts = lines[lineIndex++].split(" ")
-                method = parts[0]
-                path = if (parts[1].count { it == '/' } > 1) {
+                httpMethod = parts[0]
+                absolutePath = if (parts[1].count { it == '/' } > 1) {
                     // example: /aa/bb/cc
                     parts[1].substring(1)
                 } else {
@@ -153,25 +171,58 @@ class WebServer : Closeable {
                 }
             }
 
-            if (method != "POST") {
-                val parts = path.split("?", limit = 2)
+            if (httpMethod != "POST") {
+                val parts = absolutePath.split("?", limit = 2)
 
                 path = parts[0]
                 if (parts.size != 1) {
                     requestBody = parts[1]
                 }
+            } else {
+                path = absolutePath
             }
 
-            return RequestData(method, path, requestHeaders, requestBody)
+            return RequestData(httpMethod, path, requestHeaders, requestBody)
         }
 
         override fun run() {
             socket.use {
                 kotlin.runCatching {
-                    val requestData = getRequestData(socket)
+                    var requestData = getRequestData(socket)
 
-                    val response = socket.getOutputStream().bufferedWriter()
+                    // process middlewares - before request
 
+                    kotlin.runCatching {
+                        middlewareList.getOrdered().forEach {
+                            requestData = it.before(requestData)
+                        }
+                    }.onFailure {
+                        if (it is HttpException) {
+                            // throw more fancy error
+                            respondHttp(
+                                WebResponse(
+                                    it.status,
+                                    it.headers.toMutableMap(),
+                                    it.message!!
+                                ),
+                                it
+                            )
+                            return
+                        } else {
+                            // throw unknown 500 error
+                            respondHttp(
+                                WebResponse(
+                                    500,
+                                    mutableMapOf(),
+                                    ""
+                                ),
+                                it
+                            )
+                        }
+                    }
+
+                    // after middlewares, execute controller
+                    // process path, to get controller and method
                     val paths = requestData.path.split("/", limit = 2)
                     var controllerPath = paths[0]
                     var controllerMethod = paths[1]
@@ -183,29 +234,27 @@ class WebServer : Closeable {
                         controllerMethod = "index"
                     }
 
-                    println(
-                        """
-                    controllerPath: $controllerPath
-                    controllerMethod: $controllerMethod
-                """.trimIndent()
-                    )
-
                     val controller = controllerMap[controllerPath]
                     if (controller == null) {
-                        val result = kotlin.runCatching {
-
-                            response.write("HTTP/1.1 404\r\n")
-                            response.write("Content-Type: text/html\r\n")
-
-                            globalErrorHandler.error404()
+                        kotlin.runCatching {
+                            respondHttp(
+                                WebResponse(
+                                    404,
+                                    mutableMapOf(),
+                                    ""
+                                )
+                            )
                         }.onFailure {
-                            response.write("HTTP/1.1 500\r\n")
-                            response.write("Content-Type: text/html\r\n")
-                            globalErrorHandler.error500(it)
+                            respondHttp(
+                                WebResponse(
+                                    500,
+                                    mutableMapOf(),
+                                    ""
+                                )
+                            )
                         }
 
-                        response.write("\r\n")
-                        response.write(result.getOrNull()!!.toString())
+                        return@use // close socket
                     } else {
                         val result = controller.execute(
                             WebRequest(
@@ -217,6 +266,8 @@ class WebServer : Closeable {
 
                         response.write(result.serialize())
                     }
+
+                    // process middlewares - after request
 
                     response.flush()
                 }.onFailure {
@@ -231,23 +282,47 @@ class WebServer : Closeable {
 annotation class Path(val path: String)
 
 interface HttpErrorHandlers {
-    fun error404(): Any
-    fun error500(exception: Throwable): Any
+    fun error404(webResponse: WebResponse): WebResponse {
+        webResponse.status = 404
 
-    fun anyError(status: Int): Any
+        if (webResponse.body == "") {
+            webResponse.body = "Error 404 - Not Found"
+        }
+
+        return webResponse
+    }
+
+    fun error500(exception: Throwable, webResponse: WebResponse): WebResponse {
+        if (webResponse.status <= 0) {
+            webResponse.status = 500
+        }
+
+        if (webResponse.body == "") {
+            webResponse.body = "Error 500 - Internal Server Error"
+        }
+
+        return webResponse
+    }
 }
 
-class DefaultHttpErrorHandlers : HttpErrorHandlers {
-    override fun error404(): Any {
-        return "Error 404 - Not Found"
+class HttpException(
+    message: String,
+    val status: Int = 500,
+    val headers: Map<String, String> = mapOf(),
+) : Exception(message)
+
+interface Middleware {
+    fun before(request: RequestData): RequestData
+    fun after(response: WebResponse): WebResponse
+}
+
+open class MiddlewareAdapter : Middleware {
+    override fun before(request: RequestData): RequestData {
+        return request
     }
 
-    override fun error500(exception: Throwable): Any {
-        return "Error 500 - Internal Server Error"
-    }
-
-    override fun anyError(status: Int): Any {
-        return "Error $status"
+    override fun after(response: WebResponse): WebResponse {
+        return response
     }
 }
 

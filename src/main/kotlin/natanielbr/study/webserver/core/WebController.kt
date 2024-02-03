@@ -9,7 +9,7 @@ import kotlin.reflect.full.declaredMembers
 import kotlin.reflect.javaType
 import kotlin.reflect.jvm.jvmErasure
 
-open interface WebParameter {
+interface WebParameter {
     fun isText(): Boolean
     fun asText(): String
     fun isInt(): Boolean
@@ -24,7 +24,7 @@ open interface WebParameter {
 //    fun isArray(): Boolean
 }
 
-open interface WebGetParameter : WebParameter {
+interface WebGetParameter : WebParameter {
     fun isArray(): Boolean
     fun asAsArray(): List<*>
 }
@@ -142,7 +142,7 @@ open class WebController : HttpErrorHandlers {
      */
     fun execute(webRequest: WebRequest): WebResponse {
         this.webRequest = webRequest
-        this.webResponse = WebResponse(
+        webResponse = WebResponse(
             200, mutableMapOf(
                 "content-type" to "text/html",
             ), ""
@@ -151,9 +151,8 @@ open class WebController : HttpErrorHandlers {
         val method = methods["${request.method.lowercase()}_${webRequest.path}"]
 
         if (method == null) {
-            this.webResponse.status = 404
-            this.webResponse.body = serializeResponse(error404())
-            return this.webResponse
+            webResponse = error404(webResponse)
+            return webResponse
         }
 
         val httpParameters: Map<String, String>? = kotlin.runCatching {
@@ -188,8 +187,7 @@ open class WebController : HttpErrorHandlers {
                         }
                     }.getOrElse {
                         // todo: depois melhorar isso, esta feio
-                        this.webResponse.status = 400
-                        this.webResponse.body = serializeResponse(error500(it))
+                        this.webResponse = error500(it, this.webResponse)
 
                         return@execute this.webResponse
                     }
@@ -200,8 +198,7 @@ open class WebController : HttpErrorHandlers {
         }.getOrNull()
 
         if (httpParameters == null) {
-            this.webResponse.status = 500
-            this.webResponse.body = serializeResponse(error500(Exception("Invalid parameters")))
+            this.webResponse = error500(Exception("Invalid parameters"), webResponse)
         } else {
             this.webResponse.body = serializeResponse(runEndpoint(method, httpParameters))
         }
@@ -209,18 +206,6 @@ open class WebController : HttpErrorHandlers {
         return this.webResponse
     }
 
-    override fun error404(): Any {
-        return "Error 404 - Not Found"
-    }
-
-    override fun error500(exception: Throwable): Any {
-        exception.printStackTrace()
-        return "Error 500 - Internal Server Error"
-    }
-
-    override fun anyError(status: Int): Any {
-        return "Error $status"
-    }
 }
 
 data class WebRequest(
