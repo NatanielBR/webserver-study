@@ -1,5 +1,3 @@
-package natanielbr.study.webserver.example
-
 import natanielbr.study.webserver.core.Get
 import natanielbr.study.webserver.core.Path
 import natanielbr.study.webserver.core.Post

@@ -6,7 +6,7 @@ import natanielbr.study.webserver.core.WebServer
 
 fun main() {
     runBlocking {
-        val server = WebServer()
+        val server = WebServer(8080)
 
         server.start()
     }

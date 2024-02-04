@@ -9,11 +9,13 @@ import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
 
-class WebServer : Closeable {
+class WebServer(
+    val port: Int
+) : Closeable {
     val controllerMap = mutableListOf<WebController>()
     val middlewares = MiddlewareList<Middleware>()
 
-    private val serverSocket = ServerSocket(8080)
+    private val serverSocket = ServerSocket(port)
     val bodySerializerMap = BodySerializerMap()
     var globalErrorHandler = object : HttpErrorHandlers {}
     var isInitialized = false

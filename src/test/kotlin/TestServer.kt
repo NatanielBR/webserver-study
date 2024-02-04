@@ -2,6 +2,7 @@ import natanielbr.study.webserver.core.*
 import natanielbr.study.webserver.tests.TestWebServer.useTestServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -97,7 +98,7 @@ class TestServer {
         @JvmStatic
         @BeforeAll
         fun setup(): Unit {
-            server = WebServer()
+            server = WebServer(Random.nextInt(10000, 20000))
         }
 
         @JvmStatic

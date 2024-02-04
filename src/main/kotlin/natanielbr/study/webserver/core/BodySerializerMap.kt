@@ -9,7 +9,7 @@ class BodySerializerMap {
     init {
         addSerializer("application/json", JsonBodySerializer())
         addSerializer("get_request", GetBodySerializer())
-        addSerializer("application/html", GetBodySerializer()) // html is a simple text
+        addSerializer("text/html", GetBodySerializer()) // html is a simple text
     }
 
     fun addSerializer(contentType: String, serializer: BodySerializer) {

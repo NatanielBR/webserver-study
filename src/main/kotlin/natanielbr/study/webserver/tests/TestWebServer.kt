@@ -2,11 +2,12 @@ package natanielbr.study.webserver.tests
 
 import natanielbr.study.webserver.core.WebServer
 import java.net.http.HttpClient
+import kotlin.random.Random
 
 object TestWebServer {
 
-    fun useTestServer(server: WebServer = WebServer(), func: SimpleHttpClient.(WebServer) -> Unit) {
-        val simpleHttpClient = SimpleHttpClient("http://localhost:8080")
+    fun useTestServer(server: WebServer = WebServer(Random.nextInt(9000, 10000)), func: SimpleHttpClient.(WebServer) -> Unit) {
+        val simpleHttpClient = SimpleHttpClient("http://localhost:${server.port}")
 
 
         kotlin.runCatching {
