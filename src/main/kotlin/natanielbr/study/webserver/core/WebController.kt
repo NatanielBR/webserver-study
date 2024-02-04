@@ -78,16 +78,16 @@ open class WebController : HttpErrorHandlers {
     }
 
     private fun getMethodFromWebRequest(webRequest: WebRequest): KCallable<*>? {
-        val urlParameter = getUrlParameters(webRequest.path)
-
         methods.forEach { (path, route) ->
+            val urlParameter = getUrlParameters(path)
+
             val pathParts = path.split("_")
             val method = pathParts[0]
             val routePath = pathParts[1]
 
             if (urlParameter.isEmpty()) {
                 // normal url
-                val isValid =  if (routePath.count("/") > 0) {
+                val isValid = if (routePath.count("/") > 0) {
                     // multiple path, use absolute path
                     // absolute path always starts with /
                     method == webRequest.method.lowercase() && routePath == webRequest.absolutePath.removePrefix("/")
@@ -101,22 +101,25 @@ open class WebController : HttpErrorHandlers {
                 }
             } else {
                 // url with parameters
-                // todo: implementar
-//                val regexBuilder = StringBuilder()
-//
-//                routePath.split("/").forEach {
-//                    if (it.startsWith(":")) {
-//                        regexBuilder.append("/[a-zA-Z0-9]+")
-//                    } else {
-//                        regexBuilder.append("/$it")
-//                    }
-//                }
-//
-//                val regex = regexBuilder.toString().removePrefix("/")
-//
-//                if (method == webRequest.method.lowercase() && regex.toRegex().matches(webRequest.path)) {
-//                    return route
-//                }
+                val regexBuilder = StringBuilder()
+
+                routePath.split("/").forEach {
+                    if (it.startsWith(":")) {
+                        regexBuilder.append("/[a-zA-Z0-9.]+")
+                    } else {
+                        regexBuilder.append("/$it")
+                    }
+                }
+
+                val regex = regexBuilder.toString().removePrefix("/")
+
+                if (method == webRequest.method.lowercase() && regex.toRegex().matches(webRequest.absolutePath)) {
+                    val parts = webRequest.absolutePath.split("/")
+                    urlParameter.forEachIndexed { index, param ->
+                        webRequest.urlParameters[param] = parts[index + 1]
+                    }
+                    return route
+                }
             }
         }
 
@@ -161,7 +164,12 @@ open class WebController : HttpErrorHandlers {
 
                 } else if (it.type.jvmErasure.java.`package`.name == "java.lang") {
                     // primitive parameter
-                    val paramValue = request.body[it.name] ?: throw Exception("Parameter ${it.name} not found")
+                    var paramValue = request.body[it.name]
+                    if (paramValue == null && webRequest.urlParameters.isNotEmpty()) {
+                        paramValue = webRequest.urlParameters[it.name]
+                    }
+
+                    if (paramValue == null) throw Exception("Parameter ${it.name} not found")
                     val serialized = serializeParameter(paramValue, it.type.javaType)
 
                     methodParams.add(serialized)
@@ -225,6 +233,7 @@ data class WebRequest(
     val rawBody: String,
     val absolutePath: String
 ) {
+    var urlParameters = mutableMapOf<String, String>()
     val contentType: String?
         get() = headers["content-type"]
 }

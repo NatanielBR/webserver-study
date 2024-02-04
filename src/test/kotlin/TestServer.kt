@@ -17,7 +17,7 @@ class TestServer {
 
     @Test
     fun testPathParameter() = useTestServer(server) {
-        val res = get("/teste.txt")
+        val res = get("/staticUrl/teste.txt")
 
         assertEquals(200, res.status)
         assertEquals("teste.txt", res.body)
