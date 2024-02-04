@@ -160,7 +160,7 @@ open class WebController : HttpErrorHandlers {
                     val serialized = serializeParameter(request.body["_"]!!, it.type.javaType)
                     methodParams.add(serialized)
 
-                } else if (it.type.jvmErasure.java.`package`.name == "java.lang") {
+                } else if (it.type.jvmErasure.java.packageName == "java.lang") {
                     // primitive parameter
                     var paramValue = request.body[it.name]
                     if (paramValue == null && webRequest.urlParameters.isNotEmpty()) {

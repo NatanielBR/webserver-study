@@ -65,11 +65,11 @@ class WebServer(
         fun serializeParameter(parameter: Any, type: Type): Any {
             return when (type.typeName) {
                 "java.lang.String" -> {
-                    parameter as String
+                    parameter.toString()
                 }
 
                 "java.lang.Integer", "int" -> {
-                    parameter as Int
+                    parameter.toString().toInt()
                 }
 
                 "java.util.List<java.lang.Integer>" -> {
