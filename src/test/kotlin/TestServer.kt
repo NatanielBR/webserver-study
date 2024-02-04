@@ -24,6 +24,14 @@ class TestServer {
     }
 
     @Test
+    fun testInnerPath() = useTestServer(server) {
+        val res = get("/product/1")
+
+        assertEquals(200, res.status)
+        assertEquals("product 1", res.body)
+    }
+
+    @Test
     fun testGetWithParameters() = useTestServer(server) {
         val res = get("/ola?name=Natan")
 

@@ -2,6 +2,7 @@ package natanielbr.study.webserver.core
 
 import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
 import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
+import natanielbr.study.webserver.utils.StringUtils.count
 import kotlin.reflect.KCallable
 import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMembers
@@ -30,6 +31,7 @@ interface WebGetParameter : WebParameter {
 
 open class WebController : HttpErrorHandlers {
     private val methods = mutableMapOf<String, KCallable<*>>()
+    private var path: Path? = null
     private lateinit var webRequest: WebRequest
     private lateinit var webResponse: WebResponse
 
@@ -38,39 +40,41 @@ open class WebController : HttpErrorHandlers {
     protected val response: WebResponse
         get() = webResponse
 
-    fun initialize() {
+    fun initialize(path: Path) {
+        this.path = path
         val methods = this::class.declaredMembers
 
         methods.forEach {
             val postAnnotation = it.annotations.find { it is Post } as? Post
-            var path: String
-            val method = if (postAnnotation != null) {
-                path = if (postAnnotation.path.isEmpty()) {
-                    // use method name
-                    it.name
-                } else {
-                    postAnnotation.path.removePrefix("/")
-                }
-                "post"
+            val getAnnotation = it.annotations.find { it is Get } as Get?
+
+            if (postAnnotation == null || postAnnotation.path.isEmpty()) {
+                // no has postAnnotation or no path, use method name
+                addMethod(it, "post", it.name)
             } else {
-                path = it.name
-                "get"
+                // has postAnnotation and path, use path
+                addMethod(it, "post", postAnnotation.path)
             }
 
-            this.methods["${method}_$path"] = it
 
-            // has Get annotation
-            val getAnnotation = it.annotations.find { it is Get } as Get?
-            if (getAnnotation != null) {
-                path = if (getAnnotation.path.isEmpty()) {
-                    // use method name
+            if (getAnnotation == null || getAnnotation.path.isEmpty() && postAnnotation == null) {
+                // no has getAnnotation or no path, use method name and only if no postAnnotation
+                addMethod(it, "get", it.name)
+            } else {
+                // has getAnnotation and path, use path
+                val path = if (getAnnotation?.path?.isEmpty() == true) {
                     it.name
                 } else {
-                    getAnnotation.path.removePrefix("/")
+                    getAnnotation.path
                 }
-                this.methods["get_$path"] = it
+                addMethod(it, "get", path)
             }
         }
+    }
+
+    private fun addMethod(method: KCallable<*>, httpMethod: String, _path: String) {
+        val path = _path.removePrefix("/")
+        methods["${httpMethod}_$path"] = method
     }
 
     private fun getMethodFromWebRequest(webRequest: WebRequest): KCallable<*>? {
@@ -83,7 +87,16 @@ open class WebController : HttpErrorHandlers {
 
             if (urlParameter.isEmpty()) {
                 // normal url
-                if (method == webRequest.method.lowercase() && routePath == webRequest.path) {
+                val isValid =  if (routePath.count("/") > 0) {
+                    // multiple path, use absolute path
+                    // absolute path always starts with /
+                    method == webRequest.method.lowercase() && routePath == webRequest.absolutePath.removePrefix("/")
+                } else {
+                    // single path, use path
+                    method == webRequest.method.lowercase() && routePath == webRequest.path
+                }
+
+                if (isValid) {
                     return route
                 }
             } else {
@@ -110,16 +123,14 @@ open class WebController : HttpErrorHandlers {
         return null
     }
 
-    private fun getUrlParameters(path: String): Map<String, String> {
-        val urlParams = mutableMapOf<String, String>()
+    private fun getUrlParameters(path: String): List<String> {
+        val urlParams = mutableListOf<String>()
 
         val pathParts = path.split("/")
 
-        val thisPathParts = webRequest.path.split("/")
-
         pathParts.forEachIndexed { index, part ->
             if (part.startsWith(":")) {
-                urlParams[part.removePrefix(":")] = thisPathParts[index]
+                urlParams.add(part.removePrefix(":"))
             }
         }
 
@@ -201,6 +212,9 @@ open class WebController : HttpErrorHandlers {
         return this.webResponse
     }
 
+    fun hasEndpoint(webRequest: WebRequest): Boolean {
+        return getMethodFromWebRequest(webRequest) != null
+    }
 }
 
 data class WebRequest(
@@ -240,6 +254,7 @@ annotation class Post(
     val contentType: String = "application/json",
     val path: String = "",
 )
+
 annotation class Get(
     val path: String = "",
 )

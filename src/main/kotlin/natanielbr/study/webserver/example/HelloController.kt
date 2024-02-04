@@ -24,6 +24,11 @@ class HelloController : WebController() {
         return file
     }
 
+    @Get("/product/1")
+    fun inner(): String {
+        return "product 1"
+    }
+
     @Post
     fun whoAre(user: User): String {
         return "ola ${user.name} (${user.age})!"

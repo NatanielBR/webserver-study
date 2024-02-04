@@ -10,7 +10,7 @@ import java.net.Socket
 import kotlin.concurrent.thread
 
 class WebServer : Closeable {
-    val controllerMap = mutableMapOf<String, WebController>()
+    val controllerMap = mutableListOf<WebController>()
     val middlewares = MiddlewareList<Middleware>()
 
     private val serverSocket = ServerSocket(8080)
@@ -22,11 +22,11 @@ class WebServer : Closeable {
         // get all class using Annotation Path
         val reflections = Reflections("")
         reflections.getTypesAnnotatedWith(Path::class.java).forEach {
-            val path = it.getAnnotation(Path::class.java).path
+            val path = it.getAnnotation(Path::class.java)
             val controller = it.getDeclaredConstructor().newInstance() as WebController
-            controllerMap[path] = controller
+            controllerMap.add(controller)
 
-            it.getMethod("initialize").invoke(controller)
+            it.getMethod("initialize", Path::class.java).invoke(controller, path)
         }
     }
 
@@ -106,7 +106,7 @@ class WebServer : Closeable {
     private class SocketConnection(
         val socket: Socket,
         val globalErrorHandler: HttpErrorHandlers,
-        val controllerMap: Map<String, WebController>,
+        val controllerMap: List<WebController>,
         val middlewareList: MiddlewareList<Middleware>,
         val requestBodySerializerMap: RequestBodySerializerMap,
     ) : Runnable {
@@ -223,6 +223,10 @@ class WebServer : Closeable {
             return RequestData(httpMethod, path, requestHeaders, bodySerialized, requestBody)
         }
 
+        private fun findController(webRequest: WebRequest): WebController? {
+            return controllerMap.firstOrNull { it.hasEndpoint(webRequest) }
+        }
+
         override fun run() {
             socket.use {
                 kotlin.runCatching {
@@ -271,14 +275,15 @@ class WebServer : Closeable {
                     if (controllerMethod == "") {
                         controllerMethod = "index"
                     }
+                    val webRequest = WebRequest(
+                        controllerMethod, requestData.method,
+                        requestData.headers, requestData.body, requestData.rawBody,
+                        requestData.path
+                    )
 
-                    val controller = controllerMap[controllerPath]
+                    val controller = findController(webRequest)
                     var response = controller?.execute(
-                        WebRequest(
-                            controllerMethod, requestData.method,
-                            requestData.headers, requestData.body, requestData.rawBody,
-                            requestData.path
-                        ), requestBodySerializerMap
+                        webRequest, requestBodySerializerMap
                     ) ?: kotlin.runCatching {
                         WebResponse(
                             404,
