@@ -1,10 +1,8 @@
 package natanielbr.study.webserver.core
 
 import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
-import natanielbr.study.webserver.core.WebServer.Companion.serializeResponse
 import natanielbr.study.webserver.utils.StringUtils.count
 import kotlin.reflect.KCallable
-import kotlin.reflect.KType
 import kotlin.reflect.full.declaredMembers
 import kotlin.reflect.javaType
 import kotlin.reflect.jvm.jvmErasure
@@ -144,7 +142,7 @@ open class WebController : HttpErrorHandlers {
     private fun runEndpoint(
         method: KCallable<*>,
         request: WebRequest,
-        requestBodySerializer: RequestBodySerializerMap
+        requestBodySerializer: BodySerializerMap
     ): Any? {
         val methodParams = mutableListOf<Any>()
 
@@ -200,7 +198,7 @@ open class WebController : HttpErrorHandlers {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    fun execute(webRequest: WebRequest, requestBodySerializer: RequestBodySerializerMap): WebResponse {
+    fun execute(webRequest: WebRequest, bodySerializer: BodySerializerMap): WebResponse {
         this.webRequest = webRequest
         webResponse = WebResponse(
             200, mutableMapOf(
@@ -214,8 +212,12 @@ open class WebController : HttpErrorHandlers {
             webResponse = error404(webResponse)
             return webResponse
         }
+        val bodyAny = runEndpoint(method, request, bodySerializer)
 
-        this.webResponse.body = serializeResponse(runEndpoint(method, request, requestBodySerializer))
+        this.webResponse.body = bodySerializer.serializeResponse(
+            response.contentType,
+            bodyAny
+        )
 
         return this.webResponse
     }
@@ -243,6 +245,12 @@ class WebResponse(
     val headers: MutableMap<String, String>,
     var body: String
 ) {
+    var contentType: String
+        get() = headers["content-type"] ?: "text/html"
+        set(value) {
+            headers["content-type"] = value
+        }
+
     fun serialize(): String {
         val builder = StringBuilder()
 

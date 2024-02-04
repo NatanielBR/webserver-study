@@ -16,6 +16,14 @@ class TestServer {
     }
 
     @Test
+    fun testGetUserObject() = useTestServer(server) {
+        val res = get("/userObject")
+
+        assertEquals(200, res.status)
+        assertEquals("""{"name":"Natan","age":24}""", res.body)
+    }
+
+    @Test
     fun testPathParameter() = useTestServer(server) {
         val res = get("/staticUrl/teste.txt")
 

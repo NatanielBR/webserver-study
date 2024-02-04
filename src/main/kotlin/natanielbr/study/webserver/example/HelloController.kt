@@ -19,6 +19,12 @@ class HelloController : WebController() {
         return "ola $name!"
     }
 
+    @Get
+    fun userObject(): User {
+        response.contentType = "application/json"
+        return User("Natan", 24)
+    }
+
     @Get("/staticUrl/:file")
     fun staticUrl(file: String): String {
         return file

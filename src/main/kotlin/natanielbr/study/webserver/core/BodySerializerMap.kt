@@ -3,15 +3,16 @@ package natanielbr.study.webserver.core
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
-class RequestBodySerializerMap {
-    private val map: MutableMap<String, RequestBodySerializer> = mutableMapOf()
+class BodySerializerMap {
+    private val map: MutableMap<String, BodySerializer> = mutableMapOf()
 
     init {
-        addSerializer("application/json", JsonRequestBodySerializer())
-        addSerializer("get_request", GetRequestBodySerializer())
+        addSerializer("application/json", JsonBodySerializer())
+        addSerializer("get_request", GetBodySerializer())
+        addSerializer("application/html", GetBodySerializer()) // html is a simple text
     }
 
-    fun addSerializer(contentType: String, serializer: RequestBodySerializer) {
+    fun addSerializer(contentType: String, serializer: BodySerializer) {
         map[contentType] = serializer
     }
 
@@ -31,21 +32,28 @@ class RequestBodySerializerMap {
     fun<R> serializeObject(contentType: String, rawBody: String, jclass: Class<R>): R? {
         return map[contentType]?.serialize(rawBody, jclass)
     }
+
+    fun serializeResponse(contentType: String, obj: Any?): String {
+        return map[contentType]?.serializeResponse(obj) ?: "" // prevent "null" string
+    }
 }
 
-interface RequestBodySerializer {
+interface BodySerializer {
     /**
-     * Irá serializar o corpo da requisição para um Map<String, Any>.
+     * Irá serializar o corpo da requisição para um Map<String, Any>, que será um padrão
+     * interno para o framework.
      * Caso seja um array, a key deve ser "_" e o value deve ser uma lista.
      *
      * @param obj Request body
      * @return Translated request body, or null if it's not possible to serialize
      */
     fun serialize(obj: String): Map<String, Any?>?
+
+    fun serializeResponse(obj: Any?): String
     fun<R> serialize(obj: String, jclass: Class<R>): R
 }
 
-class JsonRequestBodySerializer : RequestBodySerializer {
+class JsonBodySerializer : BodySerializer {
     private val objectMapper = jacksonObjectMapper()
     override fun serialize(obj: String): Map<String, Any?>? {
         return kotlin.runCatching {
@@ -61,6 +69,10 @@ class JsonRequestBodySerializer : RequestBodySerializer {
 
     override fun <R> serialize(obj: String, jclass: Class<R>): R {
         return objectMapper.readValue(obj, jclass)
+    }
+
+    override fun serializeResponse(obj: Any?): String {
+        return objectMapper.writeValueAsString(obj)
     }
 
     private fun serializeField(node: JsonNode): Any? {
@@ -80,7 +92,7 @@ class JsonRequestBodySerializer : RequestBodySerializer {
     }
 }
 
-class GetRequestBodySerializer : RequestBodySerializer {
+class GetBodySerializer : BodySerializer {
     override fun serialize(obj: String): Map<String, Any> {
         return if (obj.isEmpty()) {
             mapOf()
@@ -96,5 +108,10 @@ class GetRequestBodySerializer : RequestBodySerializer {
         ).newInstance(*params.values.toTypedArray())
 
         return instance
+    }
+
+    override fun serializeResponse(obj: Any?): String {
+        // prevent throw exception
+        return obj.toString()
     }
 }

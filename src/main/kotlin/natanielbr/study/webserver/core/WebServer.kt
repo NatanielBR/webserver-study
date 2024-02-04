@@ -14,7 +14,7 @@ class WebServer : Closeable {
     val middlewares = MiddlewareList<Middleware>()
 
     private val serverSocket = ServerSocket(8080)
-    val requestBodySerializerMap = RequestBodySerializerMap()
+    val bodySerializerMap = BodySerializerMap()
     var globalErrorHandler = object : HttpErrorHandlers {}
     var isInitialized = false
 
@@ -46,7 +46,7 @@ class WebServer : Closeable {
                             globalErrorHandler,
                             controllerMap,
                             middlewares,
-                            requestBodySerializerMap
+                            bodySerializerMap
                         )
                     ).start()
                 }
@@ -60,22 +60,6 @@ class WebServer : Closeable {
 
 
     companion object {
-        fun serializeResponse(response: Any?): String {
-            if (response == null) {
-                return ""
-            }
-
-            return when (response) {
-                is String -> {
-                    response
-                }
-
-                else -> {
-                    response.toString()
-                }
-            }
-        }
-
         fun serializeParameter(parameter: Any, type: Type): Any {
             return when (type.typeName) {
                 "java.lang.String" -> {
@@ -108,7 +92,7 @@ class WebServer : Closeable {
         val globalErrorHandler: HttpErrorHandlers,
         val controllerMap: List<WebController>,
         val middlewareList: MiddlewareList<Middleware>,
-        val requestBodySerializerMap: RequestBodySerializerMap,
+        val bodySerializerMap: BodySerializerMap,
     ) : Runnable {
         private val response = socket.getOutputStream().bufferedWriter()
 
@@ -204,10 +188,10 @@ class WebServer : Closeable {
                         // if there is no content-type, then the body is empty
                         throw HttpException("Content-Type header is required", 400)
                     } else if (httpMethod == "GET") {
-                        requestBodySerializerMap.serialize("get_request", requestBody)
+                        bodySerializerMap.serialize("get_request", requestBody)
                     } else if (contentType != null) {
-                        if (requestBodySerializerMap.hasSerializer(contentType)) {
-                            requestBodySerializerMap.serialize(contentType, requestBody)!!
+                        if (bodySerializerMap.hasSerializer(contentType)) {
+                            bodySerializerMap.serialize(contentType, requestBody)!!
                         } else {
                             null
                         }
@@ -283,7 +267,7 @@ class WebServer : Closeable {
 
                     val controller = findController(webRequest)
                     var response = controller?.execute(
-                        webRequest, requestBodySerializerMap
+                        webRequest, bodySerializerMap
                     ) ?: kotlin.runCatching {
                         WebResponse(
                             404,
