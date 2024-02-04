@@ -16,6 +16,14 @@ class TestServer {
     }
 
     @Test
+    fun testPathParameter() = useTestServer(server) {
+        val res = get("/teste.txt")
+
+        assertEquals(200, res.status)
+        assertEquals("teste.txt", res.body)
+    }
+
+    @Test
     fun testGetWithParameters() = useTestServer(server) {
         val res = get("/ola?name=Natan")
 

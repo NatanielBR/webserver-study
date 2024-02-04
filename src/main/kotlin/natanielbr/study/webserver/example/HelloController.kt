@@ -6,7 +6,7 @@ import natanielbr.study.webserver.core.Post
 import natanielbr.study.webserver.core.WebController
 
 @Path("/")
-class HelloController: WebController() {
+class HelloController : WebController() {
 
     @Get
     fun index(): String {
@@ -17,6 +17,11 @@ class HelloController: WebController() {
     @Post
     fun ola(name: String): String {
         return "ola $name!"
+    }
+
+    @Get("/staticUrl/:file")
+    fun staticUrl(file: String): String {
+        return file
     }
 
     @Post

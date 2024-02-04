@@ -43,63 +43,87 @@ open class WebController : HttpErrorHandlers {
 
         methods.forEach {
             val postAnnotation = it.annotations.find { it is Post } as? Post
-            var method = if (postAnnotation != null) {
+            var path: String
+            val method = if (postAnnotation != null) {
+                path = if (postAnnotation.path.isEmpty()) {
+                    // use method name
+                    it.name
+                } else {
+                    postAnnotation.path.removePrefix("/")
+                }
                 "post"
             } else {
+                path = it.name
                 "get"
             }
 
-            this.methods["${method}_${it.name}"] = it
+            this.methods["${method}_$path"] = it
 
             // has Get annotation
-            if (it.annotations.find { it is Get } != null) {
-                this.methods["get_${it.name}"] = it
+            val getAnnotation = it.annotations.find { it is Get } as Get?
+            if (getAnnotation != null) {
+                path = if (getAnnotation.path.isEmpty()) {
+                    // use method name
+                    it.name
+                } else {
+                    getAnnotation.path.removePrefix("/")
+                }
+                this.methods["get_$path"] = it
             }
         }
     }
 
-    private fun parallelizeParam(node: WebParameter, methodParam: KType): Any? {
-        // check if T is String
-        if (node.isText()) {
-            return node.asText()
+    private fun getMethodFromWebRequest(webRequest: WebRequest): KCallable<*>? {
+        val urlParameter = getUrlParameters(webRequest.path)
+
+        methods.forEach { (path, route) ->
+            val pathParts = path.split("_")
+            val method = pathParts[0]
+            val routePath = pathParts[1]
+
+            if (urlParameter.isEmpty()) {
+                // normal url
+                if (method == webRequest.method.lowercase() && routePath == webRequest.path) {
+                    return route
+                }
+            } else {
+                // url with parameters
+                // todo: implementar
+//                val regexBuilder = StringBuilder()
+//
+//                routePath.split("/").forEach {
+//                    if (it.startsWith(":")) {
+//                        regexBuilder.append("/[a-zA-Z0-9]+")
+//                    } else {
+//                        regexBuilder.append("/$it")
+//                    }
+//                }
+//
+//                val regex = regexBuilder.toString().removePrefix("/")
+//
+//                if (method == webRequest.method.lowercase() && regex.toRegex().matches(webRequest.path)) {
+//                    return route
+//                }
+            }
         }
 
-        // check if T is Int
-        if (node.isInt()) {
-            return node.asInt()
-        } else if (node.isLong()) {
-            return node.asLong()
+        return null
+    }
+
+    private fun getUrlParameters(path: String): Map<String, String> {
+        val urlParams = mutableMapOf<String, String>()
+
+        val pathParts = path.split("/")
+
+        val thisPathParts = webRequest.path.split("/")
+
+        pathParts.forEachIndexed { index, part ->
+            if (part.startsWith(":")) {
+                urlParams[part.removePrefix(":")] = thisPathParts[index]
+            }
         }
 
-        // check if T is Float
-        if (node.isDouble()) {
-            return node.asDouble()
-        }
-
-        // check if T is Boolean
-        if (node.isBoolean()) {
-            return node.asBoolean()
-        }
-
-//        if (node.isObject) {
-//            val obj = Utils.GLOBAL_OBJ_MAPPER.treeToValue(node, methodParam.jvmErasure.java)
-//            return obj!!
-//        }
-
-//        if (node.isArray) {
-//            val list = mutableListOf<Any?>()
-//            node.forEach {
-//                val arrType = methodParam.arguments[0]
-//                list.add(parallelizeParam(it, arrType.type!!))
-//            }
-//            return list
-//        }
-
-        if (node.isNull()) {
-            return null
-        }
-
-        throw NotImplementedError()
+        return urlParams
     }
 
     @OptIn(ExperimentalStdlibApi::class)
@@ -165,7 +189,7 @@ open class WebController : HttpErrorHandlers {
             ), ""
         )
 
-        val method = methods["${request.method.lowercase()}_${webRequest.path}"]
+        val method = getMethodFromWebRequest(webRequest)
 
         if (method == null) {
             webResponse = error404(webResponse)
@@ -212,5 +236,10 @@ class WebResponse(
     }
 }
 
-annotation class Post(val contentType: String = "application/json")
-annotation class Get()
+annotation class Post(
+    val contentType: String = "application/json",
+    val path: String = "",
+)
+annotation class Get(
+    val path: String = "",
+)
