@@ -75,6 +75,7 @@ open class WebController : HttpErrorHandlers {
         methods["${httpMethod}_$path"] = method
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     private fun getMethodFromWebRequest(webRequest: WebRequest): KCallable<*>? {
         methods.forEach { (path, route) ->
             val urlParameter = getUrlParameters(path)
@@ -111,12 +112,31 @@ open class WebController : HttpErrorHandlers {
 
                 val regex = regexBuilder.toString().removePrefix("/")
 
-                if (method == webRequest.method.lowercase() && regex.toRegex().matches(webRequest.absolutePath)) {
+                if (
+                    method == webRequest.method.lowercase()
+                    && regex.toRegex().matches(webRequest.absolutePath)
+                ) {
                     val parts = webRequest.absolutePath.split("/")
                     urlParameter.forEachIndexed { index, param ->
                         webRequest.urlParameters[param] = parts[index + 1]
                     }
-                    return route
+
+                    // instance is a parameter
+                    if (route.parameters.size > 1) {
+                        // method has parameters
+                        // check if parameters is same type
+
+                        runCatching {
+                            route.parameters.forEach {
+                                serializeParameter(webRequest.urlParameters[it.name]!!, it.type.javaType)
+                            }
+                            return route
+                        }
+                    }
+
+                    // validations not passed
+                    // deleting url parameters
+                    webRequest.urlParameters.clear()
                 }
             }
         }

@@ -93,6 +93,26 @@ class TestServer {
         assertEquals("Kotlin", res.headers["x-powered-by"]!![0])
     }
 
+    /**
+     * This bug occurs because a bad implementation of route matching:
+     *
+     * GET /product/promotion
+     *
+     * routes:
+     * /product/:id -> product(id: Int)
+     * /product/promotion -> productPromotion()
+     *
+     * The route /product/promotion is not being matched
+     */
+    @Test
+    fun testBug01() = useTestServer {
+        val res = get("/product/promotion")
+
+        assertEquals(200, res.status)
+        assertEquals("""{"id":1,"name":"product 1"}""", res.body)
+
+    }
+
     companion object {
         lateinit var server: WebServer;
         @JvmStatic

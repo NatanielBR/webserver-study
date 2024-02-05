@@ -2,6 +2,7 @@ import natanielbr.study.webserver.core.Get
 import natanielbr.study.webserver.core.Path
 import natanielbr.study.webserver.core.Post
 import natanielbr.study.webserver.core.WebController
+import natanielbr.study.webserver.example.readme.Product
 
 @Path("/")
 class HelloController : WebController() {
@@ -28,9 +29,15 @@ class HelloController : WebController() {
         return file
     }
 
-    @Get("/product/1")
-    fun inner(): String {
-        return "product 1"
+    @Get("/product/:id")
+    fun product(id: Int): String {
+        return "product $id"
+    }
+
+    @Get("/product/promotion")
+    fun productPromotion(): Product {
+        response.contentType = "application/json"
+        return Product(1, "product 1")
     }
 
     @Post
