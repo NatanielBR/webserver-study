@@ -28,7 +28,7 @@ interface WebGetParameter : WebParameter {
     fun asAsArray(): List<*>
 }
 
-open class WebController : HttpErrorHandlers {
+open class WebController {
     private val methods = mutableMapOf<String, KCallable<*>>()
     private var path: Path? = null
     private lateinit var webRequest: WebRequest
@@ -228,7 +228,7 @@ open class WebController : HttpErrorHandlers {
      * @param path Nome do método a ser executado, sem a barra inicial e de forma relativa
      * @param parameters Parâmetros a serem passados para o método, com & separando os parâmetros
      */
-    fun execute(webRequest: WebRequest, bodySerializer: BodySerializerMap): WebResponse {
+    fun execute(webRequest: WebRequest, bodySerializer: BodySerializerMap): WebResponse? {
         this.webRequest = webRequest
         webResponse = WebResponse(
             200, mutableMapOf(
@@ -236,12 +236,8 @@ open class WebController : HttpErrorHandlers {
             ), ""
         )
 
-        val method = getMethodFromWebRequest(webRequest)
+        val method = getMethodFromWebRequest(webRequest) ?: return null
 
-        if (method == null) {
-            webResponse = error404(webResponse)
-            return webResponse
-        }
         val bodyAny = runEndpoint(method, request, bodySerializer)
 
         this.webResponse.body = bodySerializer.serializeResponse(
