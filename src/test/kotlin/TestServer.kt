@@ -106,7 +106,7 @@ class TestServer {
      * The route /product/promotion is not being matched
      */
     @Test
-    fun testBug01() = useTestServer {
+    fun testBug01() = useTestServer(server) {
         val res = get("/product/promotion")
 
         assertEquals(200, res.status)
