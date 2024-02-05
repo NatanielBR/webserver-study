@@ -4,6 +4,7 @@ import natanielbr.study.webserver.core.WebServer.Companion.serializeParameter
 import natanielbr.study.webserver.utils.StringUtils.count
 import kotlin.reflect.KCallable
 import kotlin.reflect.full.declaredMembers
+import kotlin.reflect.full.findParameterByName
 import kotlin.reflect.javaType
 import kotlin.reflect.jvm.jvmErasure
 
@@ -127,8 +128,17 @@ open class WebController : HttpErrorHandlers {
                         // check if parameters is same type
 
                         runCatching {
-                            route.parameters.forEach {
-                                serializeParameter(webRequest.urlParameters[it.name]!!, it.type.javaType)
+                            webRequest.urlParameters.forEach {
+                                val parameter = route.findParameterByName(it.key)
+
+                                // elvis operator is not beautiful
+                                @Suppress("FoldInitializerAndIfToElvis", "RedundantSuppression")
+                                if (parameter == null) {
+                                    // parameter not found
+                                    return@runCatching
+                                }
+
+                                serializeParameter(it.value, parameter.type.javaType)
                             }
                             return route
                         }
