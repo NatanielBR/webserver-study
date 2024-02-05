@@ -1,4 +1,5 @@
 import natanielbr.study.webserver.core.*
+import natanielbr.study.webserver.example.readme.QuickStart
 import natanielbr.study.webserver.tests.TestWebServer.useTestServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -119,6 +120,7 @@ class TestServer {
         @BeforeAll
         fun setup(): Unit {
             server = WebServer(Random.nextInt(10000, 20000))
+            server.removeController(QuickStart::class.java)
         }
 
         @JvmStatic

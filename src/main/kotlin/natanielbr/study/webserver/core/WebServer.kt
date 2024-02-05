@@ -60,6 +60,9 @@ class WebServer(
         }
     }
 
+    fun removeController(controller: Class<*>) {
+        controllerMap.removeIf { it.javaClass == controller }
+    }
 
     companion object {
         fun serializeParameter(parameter: Any, type: Type): Any {
